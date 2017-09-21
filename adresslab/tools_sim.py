@@ -24,16 +24,23 @@ import espressopp  # noqa
 __doc__ = 'The tools for the simulation.'
 
 
-def setSystemAnalysis(system, integrator, args, interval, filename_suffix=None,
-                      dynamic_res=None, particle_groups=None):
-    """Sets system analysis routine"""
+def setSystemAnalysis(system, integrator, args, interval, filename_suffix=None, particle_groups=None):
+    """Sets system analysis routine
+
+    Args:
+        system: The espressopp.System object
+        integrator: The espressopp.integrator.MDIntegrator object
+        interval: How often collect data from the observables.
+        filename_suffix: Output filename suffix.
+        particle_groups: List of particle groups to measure temperature on it.
+
+    Returns:
+        The tuple with ExtAnalyze object and SystemMonitor object.
+    """
     if filename_suffix is None:
         filename_suffix = ''
-    try:
-        alpha = args.alpha
-        energy_file = '{}_energy_{}_{}{}.csv'.format(args.output_prefix, alpha, args.rng_seed, filename_suffix)
-    except AttributeError:
-        energy_file = '{}_energy_{}{}.csv'.format(args.output_prefix, args.rng_seed, filename_suffix)
+
+    energy_file = '{}_energy_{}{}.csv'.format(args.output_prefix, args.rng_seed, filename_suffix)
     print('Energy saved to: {}'.format(energy_file))
     system_analysis = espressopp.analysis.SystemMonitor(
         system,
@@ -49,8 +56,7 @@ def setSystemAnalysis(system, integrator, args, interval, filename_suffix=None,
                 espressopp.analysis.TemperatureOnGroup(system, pg))
 
     system_analysis.add_observable('Ekin', espressopp.analysis.KineticEnergy(system, temp_comp))
-    if dynamic_res is not None:
-        system_analysis.add_observable('res', espressopp.analysis.Resolution(system))
+
 
     try:
         system_info_filter = args.system_info_filter.split(',')
@@ -74,17 +80,26 @@ def setSystemAnalysis(system, integrator, args, interval, filename_suffix=None,
     return ext_analysis, system_analysis
 
 
-def setLennardJonesInteractions(system, input_conf, verletlist, cutoff, nonbonded_params=None,  # NOQA
-                                hadress=False, ftpl=None, interaction=None, table_groups=[]):
-    """ Set lennard jones interactions which were read from gromacs based on the atomypes"""
+def setLennardJonesInteractions(input_conf, verletlist, cutoff, nonbonded_params=None,
+                                ftpl=None, interaction=None, table_groups=[]):   # NOQA
+    """ Set lennard jones interactions which were read from gromacs based on the atomypes
+
+    Args:
+        input_conf: The GROMACS input topology object.
+        verletlist: The espressopp.VerletList object.
+        nonbonded_params: The special parameters for non-bonded interactions.
+        ftpl: The espressopp.FixedTupleListAdress object.
+        interaction: The non-bonded interaction.
+        table_groups: The list of atom types that should use tabulated potential (ignored here).
+
+    Returns:
+        The interaction.
+    """
     defaults = input_conf.defaults
     atomtypeparams = input_conf.atomtypeparams
     if interaction is None:
         if ftpl:
-            if hadress:
-                interaction = espressopp.interaction.VerletListHadressLennardJones(verletlist, ftpl)
-            else:
-                interaction = espressopp.interaction.VerletListAdressLennardJones(verletlist, ftpl)
+            interaction = espressopp.interaction.VerletListAdressLennardJones(verletlist, ftpl)
         else:
             interaction = espressopp.interaction.VerletListLennardJones(verletlist)
 
@@ -139,9 +154,21 @@ def setLennardJonesInteractions(system, input_conf, verletlist, cutoff, nonbonde
     return interaction
 
 
-def setTabulatedInteractions(system, atomtypeparams, vl, cutoff, interaction=None, table_groups=[]):
-    """Sets tabulated potential for types that has particletype set to 'V'."""
-    spline_type = 1
+def setTabulatedInteractions(atomtypeparams, vl, cutoff, interaction=None, table_groups=[]):
+    """Sets tabulated potential for types that has particletype set to 'V'.
+
+    Args:
+        atomtypeparams: The GROMACS input topology object.
+        vl: The espressopp.VerletList object.
+        interaction: The non-bonded interaction.
+        cutoff: The cut-off for tabulated potential.
+        table_groups: The list of atom types that should use tabulated potential (ignored here).
+
+    Returns:
+        The interaction.
+    """
+    spline_type = 1  # linear interpolation
+
     if interaction is None:
         interaction = espressopp.interaction.VerletListTabulated(vl)
 
@@ -188,7 +215,7 @@ def genParticleList(input_conf, gro_file, use_velocity=False, use_charge=False, 
     Returns:
         List of property names and particle list.
     """
-    props = ['id', 'type', 'pos', 'res_id']
+    props = ['id', 'type', 'pos']
     use_mass = bool(input_conf.masses)
     use_velocity = use_velocity and bool(input_conf.vx)
     use_charge = use_charge and bool(input_conf.charges)
@@ -204,8 +231,6 @@ def genParticleList(input_conf, gro_file, use_velocity=False, use_charge=False, 
     num_particles = len(input_conf.types)
     if adress:
         props.append('adrat')   # Set to 1 if AT particle otherwise 0
-        props.append('lambda_adr')
-        props.append('vp')
         Particle = collections.namedtuple('Particle', props)
         adress_tuple = []
         tmptuple = []
@@ -214,8 +239,7 @@ def genParticleList(input_conf, gro_file, use_velocity=False, use_charge=False, 
             particle_type = input_conf.atomtypeparams[atom_type]['particletype']
             tmp = [pid+1,
                    atom_type,
-                   espressopp.Real3D(gro_file.atoms[pid+1].position),
-                   input_conf.res_ids[pid]]
+                   espressopp.Real3D(gro_file.atoms[pid+1].position)]
             if use_mass:
                 tmp.append(input_conf.masses[pid])
             if use_velocity:
@@ -227,15 +251,11 @@ def genParticleList(input_conf, gro_file, use_velocity=False, use_charge=False, 
                 tmp.append(input_conf.charges[pid])
             if particle_type == 'V':
                 tmp.append(0)  # adrat
-                tmp.append(0.0)  # lambda
-                tmp.append(True)  # is virtual site
                 if tmptuple != []:
                     adress_tuple.append(tmptuple[:])
                 tmptuple = [pid+1]
             else:
                 tmp.append(1)  # adrat
-                tmp.append(0.0)  # lambda
-                tmp.append(False)  # is virtual site
                 tmptuple.append(pid+1)
             particle_list.append(Particle(*tmp))
         # Set Adress tuples
@@ -245,8 +265,7 @@ def genParticleList(input_conf, gro_file, use_velocity=False, use_charge=False, 
         for pid in range(num_particles):
             tmp = [pid+1,
                    input_conf.types[pid],
-                   espressopp.Real3D(gro_file.atoms[pid+1].position),
-                   input_conf.res_ids[pid]]
+                   espressopp.Real3D(gro_file.atoms[pid+1].position)]
             if use_mass:
                 tmp.append(input_conf.masses[pid])
             if use_velocity:
@@ -258,35 +277,6 @@ def genParticleList(input_conf, gro_file, use_velocity=False, use_charge=False, 
                 tmp.append(input_conf.charges[pid])
             particle_list.append(Particle(*tmp))
         return props, particle_list
-
-
-def setBondedInteractions(system, input_conf, force_static=False, only_at=False, only_cg=None):
-    ret_list = {}
-    bonds = input_conf.bondtypes
-    bondtypeparams = input_conf.bondtypeparams
-
-    for (bid, cross_bonds), bondlist in bonds.iteritems():
-        b1 = bondlist[0][0]
-        is_cg = input_conf.atomtypeparams[input_conf.types[b1-1]]['particletype'] == 'V'
-
-        if only_at and is_cg:
-            continue
-
-        if only_cg is not None and only_cg and not is_cg:
-            continue
-
-        fpl = espressopp.FixedPairList(system.storage)
-
-        fpl.addBonds(bondlist)
-        if not cross_bonds or force_static:
-            is_cg = None
-        bdinteraction = bondtypeparams[bid].createEspressoInteraction(system, fpl, is_cg=is_cg)
-        if bdinteraction:
-            system.addInteraction(bdinteraction, 'bond_{}{}'.format(
-                bid, '_cross' if cross_bonds else ''))
-            ret_list.update({(bid, cross_bonds): bdinteraction})
-
-    return ret_list
 
 
 def setPairInteractions(system, input_conf, cutoff, coulomb_cutoff, ftpl=None):
@@ -377,6 +367,33 @@ def setPairInteractions(system, input_conf, cutoff, coulomb_cutoff, ftpl=None):
                 interaction_dynamic.setPotential(type1=type_1, type2=type_2, potential=potQQ)
             system.addInteraction(interaction_dynamic, 'coulomb14_at_cross')
 
+def setBondedInteractions(system, input_conf):
+    ret_list = {}
+    bonds = input_conf.bondtypes
+    bondtypeparams = input_conf.bondtypeparams
+
+    for (bid, cross_bonds), bondlist in bonds.iteritems():
+        b1 = bondlist[0][0]
+        is_cg = input_conf.atomtypeparams[input_conf.types[b1-1]]['particletype'] == 'V'
+
+        if only_at and is_cg:
+            continue
+
+        if only_cg is not None and only_cg and not is_cg:
+            continue
+
+        fpl = espressopp.FixedPairList(system.storage)
+
+        fpl.addBonds(bondlist)
+        if not cross_bonds or force_static:
+            is_cg = None
+        bdinteraction = bondtypeparams[bid].createEspressoInteraction(system, fpl, is_cg=is_cg)
+        if bdinteraction:
+            system.addInteraction(bdinteraction, 'bond_{}{}'.format(
+                bid, '_cross' if cross_bonds else ''))
+            ret_list.update({(bid, cross_bonds): bdinteraction})
+
+    return ret_list
 
 def setAngleInteractions(system, input_conf, force_static=False, only_at=False, only_cg=None):
     ret_list = {}
@@ -432,25 +449,3 @@ def setDihedralInteractions(system, input_conf, force_static=False, only_at=Fals
                 did, '_cross' if cross_dih else ''))
             ret_list.update({(did, cross_dih): dihedralinteraction})
     return ret_list
-
-
-def saveInteractions(system, output_filename):
-    number_of_interactions = system.getNumberOfInteractions()
-    print('Number of interactions: {}'.format(number_of_interactions))
-
-    data = {}
-    for interaction_name, interaction in system.getAllInteractions().items():
-        print('Interaction {}'.format(interaction_name))
-        data[interaction_name] = {
-            'class_str': str(interaction),
-            'params': interaction.getParams()
-        }
-        fixed_list = interaction.getFixedList()
-        if fixed_list is not None:
-            l = fixed_list.getList()
-            data[interaction_name]['fixed_list'] = l
-
-    with open(output_filename, 'wb') as output_file:
-        import cPickle
-        cPickle.dump(data, output_file)
-        print('Saved in {}'.format(output_filename))

@@ -1,0 +1,21 @@
+#include "/home/teodor/.local/gromacs/share/gromacs/top/gromos53a6.ff/forcefield.itp"
+
+[ atomtypes ]
+;name  mass        charge    ptype  C6             C12           ; sigma     epsilon
+WCG    0.00000     0.0000    V      0.000000E+00   1.000000E+00
+
+[ nonbond_params ]
+; i   j   func c6             c12
+  WCG  WCG  1    0.000000E+00   1.000000E+00  
+
+; nonbonded param for gromacs with user tables
+; i   j   func   epsilon     sigma
+; WCG WCG  1   1.000000E+00 2.50000E-01
+
+#include "./spc.adress.itp"
+
+[ system ]
+pure adress
+
+[ molecules ]
+SOL 3456

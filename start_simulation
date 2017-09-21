@@ -24,14 +24,13 @@ import random
 import os
 import time
 
-import files_io
-import adresslab.tools_sim as tools
-import gromacs_topology
+from adresslab import files_io
+from adresslab import tools_sim as tools
+from adresslab import gromacs_topology
 
-import adresslab.tools_backmapping
 import adresslab.tools as general_tools
 
-from adresslab.app_args import _args_backmapping as _args
+from adresslab.app_args import _args_md as _args
 
 # GROMACS units, kJ/mol K
 kb = 0.0083144621
@@ -73,10 +72,7 @@ def main():  # NOQA
 
     # Tune simulation parameter according to arguments
     integrator_step = args.int_step
-    if args.trj_collect > 0:
-        integrator_step = min([integrator_step, args.trj_collect])
-    k_eq_step = int(args.eq / integrator_step)
-    long_step = int(args.long / integrator_step)
+    k_steps = int(args.run / integrator_step)
 
     if args.skin:
         skin = args.skin
@@ -100,54 +96,19 @@ def main():  # NOQA
     print('LJ cutoff: {}'.format(lj_cutoff))
     print('Boltzmann constant = {}'.format(kb))
 
+    # Setup system
     system = espressopp.System()
     system.rng = espressopp.esutil.RNG(rng_seed)
 
-    part_prop, all_particles, adress_tuple = adresslab.tools.genParticleList(
+    # Generate particle lists.
+    part_prop, all_particles, adress_tuple = tools.genParticleList(
         input_conf, input_gro_conf, adress=True, use_charge=True)
     print('Reads {} particles with properties {}'.format(len(all_particles), part_prop))
 
     if input_conf.charges:
         print('Total charge: {}'.format(sum(input_conf.charges)))
 
-    # Make output from AT particles.
-    at_gro_conf = files_io.GROFile.copy(input_gro_conf, [x for p in adress_tuple for x in p[1:]], renumber=True)
-    gro_whole = files_io.GROFile.copy(input_gro_conf, [x for p in adress_tuple for x in p], renumber=True)
-
-    # Generate initial velocities, only for CG particles, AT particles will get the CG particle velocity.
-    particle_list = []
-    index_adrat = part_prop.index('adrat')
-    print('Generating velocities from Maxwell-Boltzmann distribution for T={}'.format(args.temperature))
-    part_prop.append('v')
-    cg_particles = [x for x in all_particles if x.adrat == 0]
-    vx, vy, vz = espressopp.tools.velocities.gaussian(
-        args.temperature,
-        len(cg_particles),
-        [x.mass for x in cg_particles],
-        kb=kb)
-    cg_id = 0
-    last_vel = (0.0, 0.0, 0.0)
-    last_lambda = 0.0
-    last_res_id = -1
-    index_lambda = part_prop.index('lambda_adr')
-    for p in all_particles:
-        t = list(p)
-        if p.adrat == 0:  # this is CG particle
-            last_vel = (vx[cg_id], vy[cg_id], vz[cg_id])
-            cg_id += 1
-        if args.nonuniform_lambda and p.res_id != last_res_id:
-            last_res_id = p.res_id
-            last_lambda = -1.0 * random.uniform(0.0, 10000 * args.alpha)
-        if args.nonuniform_lambda:
-            t[index_lambda] = last_lambda
-        del t[index_adrat]
-        t.append(espressopp.Real3D(last_vel))
-        particle_list.append(t)
-
-    del part_prop[index_adrat]
-
     print('Running with box {}'.format(box))
-
     system.bc = espressopp.bc.OrthorhombicBC(system.rng, box)
     system.skin = skin
 
@@ -163,47 +124,42 @@ def main():  # NOQA
         cellGrid = espressopp.tools.decomp.cellGrid(box, nodeGrid, max_cutoff, skin)
     print('Cell grid: {}'.format(cellGrid))
 
+    system.storage = espressopp.storage.DomainDecompositionAdress(system, nodeGrid, cellGrid)
 
-    system.storage = espressopp.storage.DomainDecomposition(system, nodeGrid, cellGrid)
+    # Adds particles here
+    system.storage.addParticles(map(tuple, all_particles), *part_prop)
 
-    system.storage.addParticles(map(tuple, particle_list), *part_prop)
+    ftpl = espressopp.FixedTupleListAdress(system.storage)
+    ftpl.addTuples(adress_tuple)
+    system.storage.setFixedTuplesAdress(ftpl)
+
     system.storage.decompose()
 
-    vs_list = espressopp.FixedVSList(system.storage)
-    vs_list.addTuples(adress_tuple)
-
-    at_particle_group = espressopp.ParticleGroup(system.storage)
-    cg_particle_group = espressopp.ParticleGroup(system.storage)
-    particle_groups = {'at': at_particle_group, 'cg': cg_particle_group}
-    at_particle_ids = set()
-    cg_particle_ids = set()
-    for a in adress_tuple:
-        cg_particle_ids.add(a[0])
-        cg_particle_group.add(a[0])
-        for at in a[1:]:
-            at_particle_group.add(at)
-            at_particle_ids.add(at)
-
-    integrator = espressopp.integrator.VelocityVerletHybrid(system, vs_list)
+    integrator = espressopp.integrator.VelocityVerlet(system)
     integrator.dt = args.dt
-
     system.integrator = integrator
-
-    system.storage.decompose()
 
     print('Prepared:')
     print('Bonds: {}'.format(sum(len(x) for x in input_conf.bondtypes.values())))
     print('Angles: {}'.format(sum(len(x) for x in input_conf.angletypes.values())))
     print('Dihedrals: {}'.format(sum(len(x) for x in input_conf.dihedraltypes.values())))
     print('Pairs: {}'.format(sum(len(x) for x in input_conf.pairtypes.values())))
-    print('CG particles: {}'.format(len(cg_particle_ids)))
-    print('AT particles: {}'.format(len(at_particle_ids)))
 
     print('Setting AdResS module')
+    print('Excplicit: {}'.format(args.adress_ex))
+    print('Hybrid: {}'.format(args.adress_hy))
+    if args.adress_centre == 'box_centre':
+        adr_centre = [box[0]/2.0, box[1]/2.0, box[2]/2.0]
+    else:
+        adr_centre = map(float, args.adress_centre.split(','))
+    print('Centre coordinates: {}'.format(adr_centre))
+    print('Spherical region: {}'.format(args.adress_use_sphere))
 
     # Define interactions.
-    verletlistAT, verletlistCG = adresslab.tools_backmapping.setupSinglePhase(
-        system, args, input_conf, at_particle_ids, cg_particle_ids)
+    verletlist = espressopp.VerletListAdress(system, cutoff=max_cutoff, adrcut=max_cutoff,
+                                             dEx=args.adress_ex, dHy=args.adress_hy,
+                                             adrCenter=adr_centre,
+                                             sphereAdr=args.adress_use_sphere)
 
     print('Number of interactions: {}'.format(system.getNumberOfInteractions()))
 
@@ -212,14 +168,7 @@ def main():  # NOQA
     print('Temperature: {} ({}), gamma: {}'.format(args.temperature, temperature, args.thermostat_gamma))
     print('Thermostat: {}'.format(args.thermostat))
     if args.thermostat == 'lv':
-        if args.thermostat_whole:
-            print('Enable thermostat on all particles, not only atomistic')
-            thermostat = espressopp.integrator.LangevinThermostat(system)
-        elif args.thermostat_cg:
-            print('Enable thermostat only on CG particles')
-            thermostat = espressopp.integrator.LangevinThermostatOnGroup(system, cg_particle_group)
-        else:
-            thermostat = espressopp.integrator.LangevinThermostatOnGroup(system, at_particle_group)
+        thermostat = espressopp.integrator.LangevinThermostat(system)
         thermostat.temperature = temperature
         thermostat.gamma = args.thermostat_gamma
     elif args.thermostat == 'vr':
@@ -230,13 +179,6 @@ def main():  # NOQA
 
     print("Added tuples, decomposing now ...")
 
-    print('Dynamic resolution, rate={}'.format(args.alpha))
-    print('CG equilibration for {}'.format(k_eq_step * integrator_step))
-    print('Collect trajectory every {} step'.format(k_trj_collect * integrator_step))
-    print('Flush trajectory every {} step'.format(k_trj_flush * integrator_step))
-    print('Collect energy every {} step'.format(args.energy_collect))
-    print('Atomistic long run for {}'.format(long_step * integrator_step))
-
     system.storage.decompose()
 
     if args.remove_com > 0:
@@ -245,7 +187,7 @@ def main():  # NOQA
         ext_remove_com = espressopp.integrator.ExtAnalyze(total_velocity, args.remove_com)
         integrator.addExtension(ext_remove_com)
 
-    print('Number of particles: {}'.format(len(particle_list)))
+    print('Number of particles: {}'.format(len(all_particles)))
 
     has_capforce = False
     if args.cap_force:
@@ -257,7 +199,7 @@ def main():  # NOQA
 
     print('Finished!')
     print('Total time: {}'.format(time.time() - time0))
-    espressopp.tools.analyse.final_info(system, integrator, verletlistAT, time0, time.time())
+    espressopp.tools.analyse.final_info(system, integrator, verletlist, time0, time.time())
 
 
 if __name__ == '__main__':

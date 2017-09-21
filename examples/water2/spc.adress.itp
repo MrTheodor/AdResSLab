@@ -1,0 +1,24 @@
+[ moleculetype ]
+; molname	nrexcl
+SOL		2
+
+[ atoms ]
+;   nr   type  resnr residue  atom   cgnr     charge       mass
+     1     OW      1    SOL     OW      1      -0.82   15.99940
+     2      H      1    SOL    HW1      1       0.41    1.00800
+     3      H      1    SOL    HW2      1       0.41    1.00800
+     4    WCG      1    SOL    WCG      2     0.0000
+
+[ virtual_sites3 ]
+; Site from funct a d
+; atom depedencies func     a            b
+  4      1 2 3       1    0.05595E+00 0.05595E+00
+
+[ bonds ]
+; i	j	funct	length	force.c.
+1	2	1	0.1	345000	0.1     345000
+1	3	1	0.1	345000	0.1     345000
+	
+[ angles ]
+; i	j	k	funct	angle	force.c.
+2	1	3	1	109.47	383	109.47	383
