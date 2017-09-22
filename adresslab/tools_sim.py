@@ -46,16 +46,16 @@ def setSystemAnalysis(system, integrator, args, interval, filename_suffix=None, 
         system,
         integrator,
         espressopp.analysis.SystemMonitorOutputCSV(energy_file))
-    temp_comp = espressopp.analysis.Temperature(system)
-    system_analysis.add_observable('T', temp_comp)
+    # temp_comp = espressopp.analysis.Temperature(system)
+    # system_analysis.add_observable('T', temp_comp)
+    #
+    # if particle_groups is not None:
+    #     for label, pg in particle_groups.items():
+    #         system_analysis.add_observable(
+    #             'T-{}'.format(label),
+    #             espressopp.analysis.TemperatureOnGroup(system, pg))
 
-    if particle_groups is not None:
-        for label, pg in particle_groups.items():
-            system_analysis.add_observable(
-                'T-{}'.format(label),
-                espressopp.analysis.TemperatureOnGroup(system, pg))
-
-    system_analysis.add_observable('Ekin', espressopp.analysis.KineticEnergy(system, temp_comp))
+    # system_analysis.add_observable('Ekin', espressopp.analysis.KineticEnergy(system, temp_comp))
 
 
     try:
@@ -154,12 +154,11 @@ def setLennardJonesInteractions(input_conf, verletlist, cutoff, nonbonded_params
     return interaction
 
 
-def setTabulatedInteractions(atomtypeparams, vl, cutoff, interaction=None, table_groups=[]):
+def setTabulatedInteractions(atomtypeparams, cutoff, interaction, table_groups=[]):
     """Sets tabulated potential for types that has particletype set to 'V'.
 
     Args:
         atomtypeparams: The GROMACS input topology object.
-        vl: The espressopp.VerletList object.
         interaction: The non-bonded interaction.
         cutoff: The cut-off for tabulated potential.
         table_groups: The list of atom types that should use tabulated potential (ignored here).
@@ -168,9 +167,6 @@ def setTabulatedInteractions(atomtypeparams, vl, cutoff, interaction=None, table
         The interaction.
     """
     spline_type = 1  # linear interpolation
-
-    if interaction is None:
-        interaction = espressopp.interaction.VerletListTabulated(vl)
 
     type_pairs = set()
     for type_1, v1 in atomtypeparams.iteritems():
@@ -194,7 +190,7 @@ def setTabulatedInteractions(atomtypeparams, vl, cutoff, interaction=None, table
         orig_table_name = 'table_{}_{}.xvg'.format(name_1, name_2)
         if not os.path.exists(table_name):
             espressopp.tools.convert.gromacs.convertTable(orig_table_name, table_name)
-        interaction.setPotential(
+        interaction.setPotentialCG(
             type1=type_1,
             type2=type_2,
             potential=espressopp.interaction.Tabulated(
@@ -367,27 +363,19 @@ def setPairInteractions(system, input_conf, cutoff, coulomb_cutoff, ftpl=None):
                 interaction_dynamic.setPotential(type1=type_1, type2=type_2, potential=potQQ)
             system.addInteraction(interaction_dynamic, 'coulomb14_at_cross')
 
-def setBondedInteractions(system, input_conf):
+def setBondedInteractions(system, input_conf, ftpl):
     ret_list = {}
     bonds = input_conf.bondtypes
     bondtypeparams = input_conf.bondtypeparams
 
     for (bid, cross_bonds), bondlist in bonds.iteritems():
-        b1 = bondlist[0][0]
-        is_cg = input_conf.atomtypeparams[input_conf.types[b1-1]]['particletype'] == 'V'
-
-        if only_at and is_cg:
-            continue
-
-        if only_cg is not None and only_cg and not is_cg:
-            continue
-
-        fpl = espressopp.FixedPairList(system.storage)
+        if ftpl:
+            fpl = espressopp.FixedPairListAdress(system.storage, ftpl)
+        else:
+            fpl = espressopp.FixedPairList(system.storage)
 
         fpl.addBonds(bondlist)
-        if not cross_bonds or force_static:
-            is_cg = None
-        bdinteraction = bondtypeparams[bid].createEspressoInteraction(system, fpl, is_cg=is_cg)
+        bdinteraction = bondtypeparams[bid].createEspressoInteraction(system, fpl)
         if bdinteraction:
             system.addInteraction(bdinteraction, 'bond_{}{}'.format(
                 bid, '_cross' if cross_bonds else ''))

@@ -221,31 +221,26 @@ class InteractionType:
             if k not in other.parameters: return False
             if other.parameters[k]!=v: return False
         return True
-    def createEspressoInteraction(self, system, fpl, is_cg=None):
-        print "WARNING: could not set up interaction for", self.parameters, ": Espresso potential not implemented"
-        return None
+    def createEspressoInteraction(self, system, fpl):
+        print("WARNING: could not set up interaction for {}: Espressopp potential not implemented".format(self.parameters))
     def automaticExclusion(self):
-        #overwrite in derrived class if the particular interaction is automatically excluded
         return False
 
 class HarmonicBondedInteractionType(InteractionType):
-    def createEspressoInteraction(self, system, fpl, is_cg=None):
+    def createEspressoInteraction(self, system, fpl):
         # interaction specific stuff here
         # spring constant kb is half the gromacs spring constant
         pot = espressopp.interaction.Harmonic(self.parameters['kb']/2.0, self.parameters['b0'])
         print 'setting harmonic bond k=', self.parameters['kb']/2.0, 'b0=', self.parameters['b0']
-        if is_cg is not None:
-            return espressopp.interaction.FixedPairListAdressHarmonic(system, fpl, pot, is_cg)
-        else:
-            return espressopp.interaction.FixedPairListHarmonic(system, fpl, pot)
+        return espressopp.interaction.FixedPairListHarmonic(system, fpl, pot)
 
     def automaticExclusion(self):
         return True
 
 class MorseBondedInteractionType(InteractionType):
-    def createEspressoInteraction(self, system, fpl, is_cg=None):
+    def createEspressoInteraction(self, system, fpl, ftpl=None):
         # interaction specific stuff here
-        if is_cg is not None:
+        if ftpl is not None:
             raise RuntimeError('Morse potential is not implemented to support Adress')
         pot = espressopp.interaction.Morse(self.parameters['D'], self.parameters['beta'], self.parameters['rmin'])
         interb = espressopp.interaction.FixedPairListMorse(system, fpl, pot)
@@ -254,10 +249,10 @@ class MorseBondedInteractionType(InteractionType):
         return True
 
 class FENEBondedInteractionType(InteractionType):
-    def createEspressoInteraction(self, system, fpl, is_cg=None):
+    def createEspressoInteraction(self, system, fpl, ftpl=None):
         # interaction specific stuff here
         # spring constant kb is half the gromacs spring constant
-        if is_cg is not None:
+        if ftpl is not None:
             raise RuntimeError('FENE potential is not implemented to support Adress')
         pot = espressopp.interaction.Fene(self.parameters['kb']/2.0, self.parameters['b0'])
         interb = espressopp.interaction.FixedPairListFene(system, fpl, pot)
@@ -266,21 +261,21 @@ class FENEBondedInteractionType(InteractionType):
         return True
 
 class HarmonicAngleInteractionType(InteractionType):
-    def createEspressoInteraction(self, system, fpl, is_cg=None):
+    def createEspressoInteraction(self, system, fpl, ftpl=None):
         # interaction specific stuff here
         # spring constant kb is half the gromacs spring constant. Also convert deg to rad
         K = self.parameters['k'] / 2.0
         theta0 = self.parameters['theta']*math.pi/180.0
         print 'setting angular harmonic k=', K, 'theta=', theta0
         pot = espressopp.interaction.AngularHarmonic(K=K, theta0=theta0)
-        if is_cg is not None:
-            return espressopp.interaction.FixedTripleListAdressAngularHarmonic(system, fpl, pot, is_cg)
+        if ftpl is not None:
+            return espressopp.interaction.FixedTripleListAdressAngularHarmonic(system, fpl, pot, ftpl)
         else:
             return espressopp.interaction.FixedTripleListAngularHarmonic(system, fpl, pot)
 
 
 class TabulatedBondInteractionType(InteractionType):
-    def createEspressoInteraction(self, system, fpl, is_cg=None):
+    def createEspressoInteraction(self, system, fpl, ftpl=None):
         spline=1
         fg = "table_b"+str(self.parameters['tablenr'])+".xvg"
         fe = fg.split(".")[0]+".pot" # name of espressopp file
@@ -288,15 +283,15 @@ class TabulatedBondInteractionType(InteractionType):
             convertTable(fg, fe)
         print('Tabulated bond: {}'.format(fe))
         potTab = espressopp.interaction.Tabulated(itype=spline, filename=fe)
-        if is_cg is not None:
-            return espressopp.interaction.FixedPairListAdressTabulated(system, fpl, potTab, is_cg)
+        if ftpl is not None:
+            return espressopp.interaction.FixedPairListAdressTabulated(system, fpl, potTab, ftpl)
         else:
             return espressopp.interaction.FixedPairListTabulated(system, fpl, potTab)
     def automaticExclusion(self):
         return self.parameters['excl']
 
 class TabulatedAngleInteractionType(InteractionType):
-    def createEspressoInteraction(self, system, fpl, is_cg=None):
+    def createEspressoInteraction(self, system, fpl, ftpl=None):
         spline=1
         fg = "table_a"+str(self.parameters['tablenr'])+".xvg"
         fe = fg.split(".")[0]+".pot" # name of espressopp file
@@ -304,13 +299,13 @@ class TabulatedAngleInteractionType(InteractionType):
             convertTable(fg, fe)
         print('Tabulated angular: {}'.format(fe))
         potTab = espressopp.interaction.TabulatedAngular(itype=spline, filename=fe)
-        if is_cg is not None:
-            return espressopp.interaction.FixedTripleListAdressTabulatedAngular(system, fpl, potTab, is_cg)
+        if ftpl is not None:
+            return espressopp.interaction.FixedTripleListAdressTabulatedAngular(system, fpl, potTab, ftpl)
         else:
             return espressopp.interaction.FixedTripleListTabulatedAngular(system, fpl, potTab)
 
 class TabulatedDihedralInteractionType(InteractionType):
-    def createEspressoInteraction(self, system, fpl, is_cg=None):
+    def createEspressoInteraction(self, system, fpl, ftpl=None):
         spline = 1
         fg = "table_d"+str(self.parameters['tablenr'])+".xvg"
         fe = fg.split(".")[0]+".pot" # name of espressopp file
@@ -318,30 +313,30 @@ class TabulatedDihedralInteractionType(InteractionType):
             convertTable(fg, fe)
         print('Tabulated dihedral: {}'.format(fe))
         potTab = espressopp.interaction.TabulatedDihedral(itype=spline, filename=fe)
-        if is_cg is not None:
-            return espressopp.interaction.FixedQuadrupleListAdressTabulatedDihedral(system, fpl, potTab, is_cg)
+        if ftpl is not None:
+            return espressopp.interaction.FixedQuadrupleListAdressTabulatedDihedral(system, fpl, potTab, ftpl)
         else:
             return espressopp.interaction.FixedQuadrupleListTabulatedDihedral(system, fpl, potTab)
 
 class RyckaertBellemansDihedralInteractionType(InteractionType):
-    def createEspressoInteraction(self, system, fpl, is_cg=None):
+    def createEspressoInteraction(self, system, fpl, ftpl=None):
         print('RyckaertBellemans: {}'.format(self.parameters))
         pot = espressopp.interaction.DihedralRB(**self.parameters)
-        if is_cg is not None:
-            return espressopp.interaction.FixedQuadrupleListAdressDihedralRB(system, fpl, pot, is_cg)
+        if ftpl is not None:
+            return espressopp.interaction.FixedQuadrupleListAdressDihedralRB(system, fpl, pot, ftpl)
         else:
             return espressopp.interaction.FixedQuadrupleListDihedralRB(system, fpl, pot)
 
 
 class HarmonicNCosDihedralInteractionType(InteractionType):
-    def createEspressoInteraction(self, system, fpl, is_cg=None):
+    def createEspressoInteraction(self, system, fpl, ftpl=None):
         theta0 = self.parameters['theta0'] * math.pi/180.0
         print('HarmonicNCosDihedral, theta0: {}, k:{}, n: {}'.format(
             theta0, self.parameters['k'], self.parameters['n']))
         pot = espressopp.interaction.DihedralHarmonicNCos(
             K=self.parameters['k'], phi0=theta0, multiplicity=self.parameters['n'])
-        if is_cg is not None:
-            return espressopp.interaction.FixedQuadrupleListAdressDihedralHarmonicNCos(system, fpl, pot, is_cg)
+        if ftpl is not None:
+            return espressopp.interaction.FixedQuadrupleListAdressDihedralHarmonicNCos(system, fpl, pot, ftpl)
         else:
             return espressopp.interaction.FixedQuadrupleListDihedralHarmonicNCos(system, fpl, pot)
 

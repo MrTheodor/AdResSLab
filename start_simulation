@@ -158,6 +158,7 @@ def main():  # NOQA
                                              dEx=args.adress_ex, dHy=args.adress_hy,
                                              adrCenter=adr_centre,
                                              sphereAdr=args.adress_use_sphere)
+    verletlist.exclude(input_conf.exclusions)
 
     lj_interaction = tools.setLennardJonesInteractions(
         input_conf, verletlist, max_cutoff, input_conf.nonbond_params, ftpl=ftpl)
@@ -169,6 +170,13 @@ def main():  # NOQA
                                                                   epsilon2=args.coulomb_epsilon2,
                                                                   kappa=args.coulomb_kappa,
                                                                   ftpl=ftpl)
+
+    tools.setTabulatedInteractions(input_conf.atomtypeparams, max_cutoff, lj_interaction)
+
+    tools.setBondedInteractions(system, input_conf, ftpl)
+
+    system.addInteraction(lj_interaction, 'lj')
+    system.addInteraction(coulomb_interaction, 'coulomb')
 
     print('Number of interactions: {}'.format(system.getNumberOfInteractions()))
 
@@ -188,7 +196,7 @@ def main():  # NOQA
 
     print("Added tuples, decomposing now ...")
 
-    system.storage.decompose()
+    ext_analysis, system_analysis = tools.setSystemAnalysis(system, integrator, args, args.energy_collect)
 
     if args.remove_com > 0:
         print('Removes total velocity of the system every {} steps'.format(args.remove_com))
@@ -205,6 +213,14 @@ def main():  # NOQA
         cap_force = espressopp.integrator.CapForce(system, args.cap_force)
         integrator.addExtension(cap_force)
 
+    gro_out = espressopp.io.DumpGROAdress(system, ftpl, integrator, 'traj.gro', True, append=False)
+    gro_out.dump()
+
+    system_analysis.info()
+    # Main integrator loop.
+    for k in range(k_steps):
+        integrator.run(args.int_step)
+        system_analysis.info()
 
     print('Finished!')
     print('Total time: {}'.format(time.time() - time0))

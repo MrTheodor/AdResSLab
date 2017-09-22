@@ -41,9 +41,10 @@ def _args_md():
     parser.add_argument('--output_prefix',
                         default='sim', type=str,
                         help='Prefix for output files')
+    parser.add_argument('--energy_collect', default=1000, help='How often collect energy terms', type=int)
 
     misc_group = parser.add_argument_group('Misc')
-    parser.add_argument('--remove_com', action='store_true', help='Removes total velocity of the system')
+    parser.add_argument('--remove_com', type=ast.literal_eval, help='Removes total velocity of the system', default=False)
     misc_group.add_argument('--cap_force', type=float, help='Define maximum cap-force in the system')
 
     thermostat_group = parser.add_argument_group('Thermostat')
@@ -88,7 +89,7 @@ def _args_md():
         '--adress_centre', default='box_centre',
         help='Where is the centre of explicit region. Format: "box_centre" - for box centre; x,y,z - specific position.')
     adress_group.add_argument('--adress_use_sphere', help='If True then spherical AdResS is used', default=False,
-                              action='store_true')
+                              type=ast.literal_eval)
 
     em_group = parser.add_argument_group('Energy minimization')
     em_group.add_argument('--em', help='Maximum number of steps to perform in EM', type=int, default=0)

@@ -513,7 +513,7 @@ def storeAtoms(f, defaults, types, atomtypes,
         fields = line.split()
         attypeid = atomtypes[fields[1]]  # map str type to int type
         types_tmp.append(attypeid)
-        if len(fields) > 6:
+        if len(fields) > 7:
             # this atom has a charge different from its atomtype
             charge_tmp.append(float(fields[6]))
         else:
@@ -524,6 +524,7 @@ def storeAtoms(f, defaults, types, atomtypes,
             mass_tmp.append(float(fields[7]))
         else:
             mass_tmp.append(atomtypeparams[attypeid]['mass'])
+        print(fields, len(fields))
 
         use_atomtypeparams.update({attypeid: atomtypeparams[attypeid]})
 
@@ -1040,17 +1041,23 @@ def setCoulombInteractions(system, verletlist, rc, atomtypeparams,
                            epsilon1, epsilon2, kappa, ftpl=None):
     pref = 138.935485  # we want gromacs units, so this is 1/(4 pi eps_0) ins units of kJ mol^-1 e^-2
 
-    type_pairs = sorted({
+    at_type_pairs = sorted({
                             tuple(sorted([type_1, type_2]))
                             for type_1, pi in atomtypeparams.iteritems()
                             for type_2, pj in atomtypeparams.iteritems()
-                            if ((pi.get('charge', 0.0) != 0.0 and pj.get('charge', 0.0) != 0.0) and \
-                                (pi['particletype'] != 'V' and pj['particletype'] != 'V'))
+                            if ((pi['particletype'] != 'V' and pj['particletype'] != 'V'))
                             })
-    print(atomtypeparams)
-    print('Number of coulombic pairs: {}'.format(len(type_pairs)))
-    if type_pairs:
 
+    cg_type_pairs = sorted({
+                            tuple(sorted([type_1, type_2]))
+                            for type_1, pi in atomtypeparams.iteritems()
+                            for type_2, pj in atomtypeparams.iteritems()
+                            if ((pi['particletype'] == 'V' and pj['particletype'] == 'V'))
+                            })
+
+    print(atomtypeparams)
+    print('Number of AT coulombic pairs: {}'.format(len(at_type_pairs)))
+    if at_type_pairs or cg_type_pairs:
         pot = espressopp.interaction.ReactionFieldGeneralized(
             prefactor=pref, kappa=kappa, epsilon1=epsilon1, epsilon2=epsilon2, cutoff=rc)
         if ftpl:
@@ -1063,51 +1070,18 @@ def setCoulombInteractions(system, verletlist, rc, atomtypeparams,
         else:
             setPotential_fn = interaction.setPotential
 
-        for type_1, type_2 in type_pairs:
+        # Settings separately the interactions for AT and CG.
+        for type_1, type_2 in at_type_pairs:
             print('Set coulomb interaction: {}-{}'.format(type_1, type_2))
             setPotential_fn(type1=type_1, type2=type_2, potential=pot)
+
+        for type_1, type_2 in cg_type_pairs:
+            print('Set coulomb interaction: {}-{}'.format(type_1, type_2))
+            setPotential_fn(type1=type_1, type2=type_2, potential=pot)
+
         return interaction
     else:
         return None
-
-
-def setCoulombInteractionsProtein(system, verletlist, rc, types, epsilon1, epsilonprot, epsilonwat, kappa, otype, htype,
-                                  hadress=False, adress=False, ftpl=None):
-    print "# Setting up Coulomb reaction field interactions"
-    print "# Using ", epsilonwat, " for water and wat-prot and ", epsilonprot, " for protein"
-
-    pref = 138.935485  # we want gromacs units, so this is 1/(4 pi eps_0) ins units of kJ mol^-1 e^-2
-
-    potwat = espressopp.interaction.ReactionFieldGeneralized(prefactor=pref, kappa=kappa, epsilon1=epsilon1,
-                                                             epsilon2=epsilonwat, cutoff=rc)
-    potprot = espressopp.interaction.ReactionFieldGeneralized(prefactor=pref, kappa=kappa, epsilon1=epsilon1,
-                                                              epsilon2=epsilonprot, cutoff=rc)
-
-    if hadress and adress:
-        print "Error! In gromacs.setCoulombInteractions, you cannot use adress and hadress at the same time"
-        return
-    if hadress:
-        interaction = espressopp.interaction.VerletListHadressReactionFieldGeneralized(verletlist, ftpl)
-    elif adress:
-        interaction = espressopp.interaction.VerletListAdressReactionFieldGeneralized(verletlist, ftpl)
-    else:
-        interaction = espressopp.interaction.VerletListReactionFieldGeneralized(verletlist)
-
-    for i in range(max(types) + 1):
-        for k in range(i, max(types) + 1):
-            if i == otype or i == htype or k == otype or k == htype:
-                if hadress or adress:
-                    interaction.setPotentialAT(type1=i, type2=k, potential=potwat)
-                else:
-                    interaction.setPotential(type1=i, type2=k, potential=potwat)
-            else:
-                if hadress or adress:
-                    interaction.setPotentialAT(type1=i, type2=k, potential=potprot)
-                else:
-                    interaction.setPotential(type1=i, type2=k, potential=potprot)
-
-    system.addInteraction(interaction, 'coulomb_protein')
-    return interaction
 
 
 def setCoulomb14Interactions(system, defaults, onefourlist, rc, types):
