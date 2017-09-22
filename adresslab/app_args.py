@@ -67,10 +67,8 @@ def _args_md():
     barostat_group.add_argument('--pressure', help='Pressure', type=float)
 
     interactions_group = parser.add_argument_group('Interactions')
-    interactions_group.add_argument('--lj_cutoff', default=1.2, type=float,
+    interactions_group.add_argument('--cutoff', default=1.2, type=float,
                         help='Cutoff of atomistic non-bonded interactions')
-    interactions_group.add_argument('--cg_cutoff', default=1.4, type=float,
-                        help='Cuoff of coarse-grained non-bonded interactions')
     interactions_group.add_argument('--coulomb_epsilon1', default=1.0, type=float,
                         help='Epsilon_1 for coulomb interactions')
     interactions_group.add_argument('--coulomb_epsilon2', default=78.0, type=float,

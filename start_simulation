@@ -43,9 +43,7 @@ def main():  # NOQA
     time0 = time.time()
     args = _args().parse_args()
 
-    lj_cutoff = args.lj_cutoff
-    cg_cutoff = args.cg_cutoff
-    max_cutoff = max([args.lj_cutoff, args.cg_cutoff])
+    max_cutoff = args.cutoff
 
     print('Welcome in AdResSLab!')
 
@@ -93,7 +91,7 @@ def main():  # NOQA
     print('Skin: {}'.format(skin))
     print('RNG Seed: {}'.format(rng_seed))
     print('Time step: {}'.format(args.dt))
-    print('LJ cutoff: {}'.format(lj_cutoff))
+    print('Cutoff: {}'.format(max_cutoff))
     print('Boltzmann constant = {}'.format(kb))
 
     # Setup system
@@ -160,6 +158,17 @@ def main():  # NOQA
                                              dEx=args.adress_ex, dHy=args.adress_hy,
                                              adrCenter=adr_centre,
                                              sphereAdr=args.adress_use_sphere)
+
+    lj_interaction = tools.setLennardJonesInteractions(
+        input_conf, verletlist, max_cutoff, input_conf.nonbond_params, ftpl=ftpl)
+    coulomb_interaction = gromacs_topology.setCoulombInteractions(system,
+                                                                  verletlist,
+                                                                  max_cutoff,
+                                                                  input_conf.atomtypeparams,
+                                                                  epsilon1=args.coulomb_epsilon1,
+                                                                  epsilon2=args.coulomb_epsilon2,
+                                                                  kappa=args.coulomb_kappa,
+                                                                  ftpl=ftpl)
 
     print('Number of interactions: {}'.format(system.getNumberOfInteractions()))
 

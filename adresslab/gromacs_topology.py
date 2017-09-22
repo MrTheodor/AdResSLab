@@ -1037,9 +1037,7 @@ def setLennardJonesInteractions(system, defaults, atomtypeparams, verletlist, cu
 
 
 def setCoulombInteractions(system, verletlist, rc, atomtypeparams,
-                           epsilon1, epsilon2, kappa, hadress=False, adress=False, ftpl=None,
-                           pot=None, interaction=None
-                           ):
+                           epsilon1, epsilon2, kappa, ftpl=None):
     pref = 138.935485  # we want gromacs units, so this is 1/(4 pi eps_0) ins units of kJ mol^-1 e^-2
 
     type_pairs = sorted({
@@ -1049,22 +1047,18 @@ def setCoulombInteractions(system, verletlist, rc, atomtypeparams,
                             if ((pi.get('charge', 0.0) != 0.0 and pj.get('charge', 0.0) != 0.0) and \
                                 (pi['particletype'] != 'V' and pj['particletype'] != 'V'))
                             })
-
+    print(atomtypeparams)
     print('Number of coulombic pairs: {}'.format(len(type_pairs)))
     if type_pairs:
-        if pot is None:
-            pot = espressopp.interaction.ReactionFieldGeneralized(
-                prefactor=pref, kappa=kappa, epsilon1=epsilon1, epsilon2=epsilon2, cutoff=rc)
-        if interaction is None:
-            if hadress and adress:
-                raise RuntimeError('Ambiguous option, it is only possible to use Adress or HAdress.')
 
-            if adress:
-                interaction = espressopp.interaction.VerletListHybridReactionFieldGeneralized(verletlist)
-            else:
-                interaction = espressopp.interaction.VerletListReactionFieldGeneralized(verletlist)
+        pot = espressopp.interaction.ReactionFieldGeneralized(
+            prefactor=pref, kappa=kappa, epsilon1=epsilon1, epsilon2=epsilon2, cutoff=rc)
+        if ftpl:
+            interaction = espressopp.interaction.VerletListAdressReactionFieldGeneralized(verletlist, ftpl)
+        else:
+            interaction = espressopp.interaction.VerletListReactionFieldGeneralized(verletlist)
 
-        if hadress or adress:
+        if ftpl:
             setPotential_fn = interaction.setPotentialAT
         else:
             setPotential_fn = interaction.setPotential
