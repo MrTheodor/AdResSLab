@@ -403,28 +403,19 @@ def setAngleInteractions(system, input_conf, ftpl):
             ret_list.update({(aid, cross_angles): angleinteraction})
     return ret_list
 
-
-def setDihedralInteractions(system, input_conf, force_static=False, only_at=False,  only_cg=None):
+def setDihedralInteractions(system, input_conf, ftpl):
     ret_list = {}
     dihedrals = input_conf.dihedraltypes
     dihedraltypeparams = input_conf.dihedraltypeparams
 
     for (did, cross_dih), dihedrallist in dihedrals.iteritems():
-        b1 = dihedrallist[0][0]
-        is_cg = input_conf.atomtypeparams[input_conf.types[b1-1]]['particletype'] == 'V'
+        if ftpl:
+            fql = espressopp.FixedQuadrupleListAdress(system.storage, ftpl)
+        else:
+            fql = espressopp.FixedQuadrupleList(system.storage)
+        fql.addQuadruples(dihedrallist)
 
-        if only_at and is_cg:
-            continue
-
-        if only_cg is not None and only_cg and not is_cg:
-            continue
-
-        fpl = espressopp.FixedQuadrupleList(system.storage)
-        fpl.addQuadruples(dihedrallist)
-        if not cross_dih or force_static:
-            is_cg = None
-        dihedralinteraction = dihedraltypeparams[did].createEspressoInteraction(
-            system, fpl, is_cg=is_cg)
+        dihedralinteraction = dihedraltypeparams[did].createEspressoInteraction(system, fql)
         if dihedralinteraction:
             system.addInteraction(dihedralinteraction, 'dihedral_{}{}'.format(
                 did, '_cross' if cross_dih else ''))
