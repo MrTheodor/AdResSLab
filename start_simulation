@@ -142,7 +142,7 @@ def main():  # NOQA
             tmpp = []
     system.storage.addParticles(new_plist, *part_prop)
 
-    print(adress_tuple)
+    print('Set {} AdResS tuples'.format(len(adress_tuple)))
 
     ftpl = espressopp.FixedTupleListAdress(system.storage)
     ftpl.addTuples(adress_tuple)
@@ -187,6 +187,7 @@ def main():  # NOQA
     tools.setTabulatedInteractions(input_conf.atomtypeparams, max_cutoff, lj_interaction)
     tools.setBondedInteractions(system, input_conf, ftpl)
     tools.setAngleInteractions(system, input_conf, ftpl)
+    tools.setDihedralInteractions(system, input_conf, ftpl)
 
     system.addInteraction(lj_interaction, 'lj')
     system.addInteraction(coulomb_interaction, 'coulomb')
@@ -201,10 +202,12 @@ def main():  # NOQA
         thermostat = espressopp.integrator.LangevinThermostat(system)
         thermostat.temperature = temperature
         thermostat.gamma = args.thermostat_gamma
+        thermostat.adress = True
     elif args.thermostat == 'vr':
-        thermostat = espressopp.integrator.StochasticVelocityRescaling(system)
-        thermostat.temperature = temperature
-        thermostat.coupling = args.thermostat_gamma
+        raise RuntimeError('Stochastic velocity rescale does not support AdResS, use Langevin.')
+        # thermostat = espressopp.integrator.StochasticVelocityRescaling(system)
+        # thermostat.temperature = temperature
+        # thermostat.coupling = args.thermostat_gamma
     integrator.addExtension(thermostat)
 
     print("Added tuples, decomposing now ...")
@@ -231,23 +234,26 @@ def main():  # NOQA
     print('Decomposing...')
     espressopp.tools.AdressDecomp(system, integrator)
 
+    # Let's compute density along X-axis
     xdensity_comp = espressopp.analysis.XDensity(system)
     xdensity = numpy.array(xdensity_comp.compute(100))
 
-    system_analysis.info()
+    dump_conf_gro = espressopp.io.DumpGROAdress(system, ftpl, integrator, filename='traj.gro', unfolded=True)
+
     # Main integrator loop.
     for k in range(k_steps):
         integrator.run(args.int_step)
         system_analysis.info()
-        t = numpy.array(xdensity_comp.compute(100))
-        xdensity += t
+        xdensity += numpy.array(xdensity_comp.compute(100))
+        dump_conf_gro.dump()
 
     xdensity = xdensity / k_steps
     dr = box[0]/100
-    print(dr)
     xdensity = numpy.column_stack((numpy.arange(0, box[0], dr), xdensity))
 
-    numpy.savetxt('xdensity.csv', xdensity)
+    xdensity_file = '{}_{}_xdensity.csv'.format(args.output_prefix, args.rng_seed)
+    numpy.savetxt(xdensity_file, xdensity)
+    print('Saved x-density: {}'.format(xdensity_file))
 
     print('Finished!')
     print('Total time: {}'.format(time.time() - time0))

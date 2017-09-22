@@ -46,16 +46,10 @@ def setSystemAnalysis(system, integrator, args, interval, filename_suffix=None, 
         system,
         integrator,
         espressopp.analysis.SystemMonitorOutputCSV(energy_file))
-    # temp_comp = espressopp.analysis.Temperature(system)
-    # system_analysis.add_observable('T', temp_comp)
-    #
-    # if particle_groups is not None:
-    #     for label, pg in particle_groups.items():
-    #         system_analysis.add_observable(
-    #             'T-{}'.format(label),
-    #             espressopp.analysis.TemperatureOnGroup(system, pg))
+    temp_comp = espressopp.analysis.Temperature(system)
+    system_analysis.add_observable('T', temp_comp)
 
-    # system_analysis.add_observable('Ekin', espressopp.analysis.KineticEnergy(system, temp_comp))
+    system_analysis.add_observable('Ekin', espressopp.analysis.KineticEnergy(system, temp_comp))
 
 
     try:
