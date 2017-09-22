@@ -19,6 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import espressopp  # NOQA
 import math  # NOQA
+import numpy
 from mpi4py import MPI
 import random
 import os
@@ -124,18 +125,30 @@ def main():  # NOQA
 
     system.storage = espressopp.storage.DomainDecompositionAdress(system, nodeGrid, cellGrid)
 
+    integrator = espressopp.integrator.VelocityVerlet(system)
+    integrator.dt = args.dt
+    system.integrator = integrator
+
     # Adds particles here
-    system.storage.addParticles(map(tuple, all_particles), *part_prop)
+    # Apparently AdResS required to first add CG particle and then the corresponding AT particles...
+    tmpp = []
+    new_plist = []
+    for p in all_particles:
+        if p.adrat == 1:  # atomistic particle
+            tmpp.append(tuple(p))
+        else:  # CG particle
+            new_plist.append(tuple(p))
+            new_plist.extend(tmpp)
+            tmpp = []
+    system.storage.addParticles(new_plist, *part_prop)
+
+    print(adress_tuple)
 
     ftpl = espressopp.FixedTupleListAdress(system.storage)
     ftpl.addTuples(adress_tuple)
     system.storage.setFixedTuplesAdress(ftpl)
 
     system.storage.decompose()
-
-    integrator = espressopp.integrator.VelocityVerlet(system)
-    integrator.dt = args.dt
-    system.integrator = integrator
 
     print('Prepared:')
     print('Bonds: {}'.format(sum(len(x) for x in input_conf.bondtypes.values())))
@@ -172,8 +185,8 @@ def main():  # NOQA
                                                                   ftpl=ftpl)
 
     tools.setTabulatedInteractions(input_conf.atomtypeparams, max_cutoff, lj_interaction)
-
     tools.setBondedInteractions(system, input_conf, ftpl)
+    tools.setAngleInteractions(system, input_conf, ftpl)
 
     system.addInteraction(lj_interaction, 'lj')
     system.addInteraction(coulomb_interaction, 'coulomb')
@@ -206,21 +219,35 @@ def main():  # NOQA
 
     print('Number of particles: {}'.format(len(all_particles)))
 
-    has_capforce = False
+    # add AdResS
+    adress = espressopp.integrator.Adress(system, verletlist, ftpl)
+    integrator.addExtension(adress)
+
     if args.cap_force:
-        has_capforce = True
         print('Define maximum cap-force in the system (max: {})'.format(args.cap_force))
         cap_force = espressopp.integrator.CapForce(system, args.cap_force)
         integrator.addExtension(cap_force)
 
-    gro_out = espressopp.io.DumpGROAdress(system, ftpl, integrator, 'traj.gro', True, append=False)
-    gro_out.dump()
+    print('Decomposing...')
+    espressopp.tools.AdressDecomp(system, integrator)
+
+    xdensity_comp = espressopp.analysis.XDensity(system)
+    xdensity = numpy.array(xdensity_comp.compute(100))
 
     system_analysis.info()
     # Main integrator loop.
     for k in range(k_steps):
         integrator.run(args.int_step)
         system_analysis.info()
+        t = numpy.array(xdensity_comp.compute(100))
+        xdensity += t
+
+    xdensity = xdensity / k_steps
+    dr = box[0]/100
+    print(dr)
+    xdensity = numpy.column_stack((numpy.arange(0, box[0], dr), xdensity))
+
+    numpy.savetxt('xdensity.csv', xdensity)
 
     print('Finished!')
     print('Total time: {}'.format(time.time() - time0))

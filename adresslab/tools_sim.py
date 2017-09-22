@@ -247,15 +247,16 @@ def genParticleList(input_conf, gro_file, use_velocity=False, use_charge=False, 
                 tmp.append(input_conf.charges[pid])
             if particle_type == 'V':
                 tmp.append(0)  # adrat
-                if tmptuple != []:
-                    adress_tuple.append(tmptuple[:])
-                tmptuple = [pid+1]
+                if tmptuple:
+                    adress_tuple.append([pid+1] + tmptuple[:])
+                tmptuple = []
             else:
                 tmp.append(1)  # adrat
                 tmptuple.append(pid+1)
             particle_list.append(Particle(*tmp))
         # Set Adress tuples
-        adress_tuple.append(tmptuple[:])
+        if tmptuple:
+            adress_tuple.append(tmptuple[:])
         return props, particle_list, adress_tuple
     else:
         for pid in range(num_particles):
@@ -383,27 +384,19 @@ def setBondedInteractions(system, input_conf, ftpl):
 
     return ret_list
 
-def setAngleInteractions(system, input_conf, force_static=False, only_at=False, only_cg=None):
+def setAngleInteractions(system, input_conf, ftpl):
     ret_list = {}
     angletypeparams = input_conf.angletypeparams
     angles = input_conf.angletypes
 
     for (aid, cross_angles), anglelist in angles.iteritems():
-        b1 = anglelist[0][0]
-        is_cg = input_conf.atomtypeparams[input_conf.types[b1-1]]['particletype'] == 'V'
+        if ftpl:
+            ftl = espressopp.FixedTripleListAdress(system.storage, ftpl)
+        else:
+            ftl = espressopp.FixedTripleList(system.storage)
 
-        if only_at and is_cg:
-            continue
-
-        if only_cg is not None and only_cg and not is_cg:
-            continue
-
-        fpl = espressopp.FixedTripleList(system.storage)
-
-        fpl.addTriples(anglelist)
-        if not cross_angles or force_static:
-            is_cg = None
-        angleinteraction = angletypeparams[aid].createEspressoInteraction(system, fpl, is_cg=is_cg)
+        ftl.addTriples(anglelist)
+        angleinteraction = angletypeparams[aid].createEspressoInteraction(system, ftl)
         if angleinteraction:
             system.addInteraction(angleinteraction, 'angle_{}{}'.format(
                 aid, '_cross' if cross_angles else ''))

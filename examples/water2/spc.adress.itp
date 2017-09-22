@@ -7,7 +7,7 @@ SOL		2
      1     OW      1    SOL     OW      1      -0.82   15.99940
      2      H      1    SOL    HW1      1       0.41    1.00800
      3      H      1    SOL    HW2      1       0.41    1.00800
-     4    WCG      1    SOL    WCG      2     0.0000
+     4    WCG      1    SOL    WCG      2       0.00   18.01540
 
 [ virtual_sites3 ]
 ; Site from funct a d
