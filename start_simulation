@@ -1,14 +1,16 @@
 #!/usr/bin/env python2
 """
-Copyright (C) 2017 Jakub Krajniak <jkrajniak@gmail.com>
+Copyright (C) 2017
+    Jakub Krajniak (jkrajniak at gmail.com)
 
-This file is distributed under free software licence:
-you can redistribute it and/or modify it under the terms of the
-GNU General Public License as published by
+This file is part of AdResSLab.
+
+AdResSLab is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 
-This program is distributed in the hope that it will be useful,
+AdResSLab is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
@@ -18,18 +20,17 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import espressopp  # NOQA
-import math  # NOQA
 import numpy
 from mpi4py import MPI
 import random
 import os
 import time
+from scipy.signal import savgol_filter
 
 from adresslab import files_io
 from adresslab import tools_sim as tools
 from adresslab import gromacs_topology
 
-import adresslab.tools as general_tools
 
 from adresslab.app_args import _args_md as _args
 
@@ -40,7 +41,6 @@ kb = 0.0083144621
 
 # Mostly you do not need to modify lines below.
 def main():  # NOQA
-    h5md_group = 'atoms'
     time0 = time.time()
     args = _args().parse_args()
 
@@ -226,6 +226,29 @@ def main():  # NOQA
     adress = espressopp.integrator.Adress(system, verletlist, ftpl)
     integrator.addExtension(adress)
 
+    if args.tabletf:
+        print('Setting thermodynamic force: {}'.format(args.tabletf))
+        tabletfs = args.tabletf.split(',')
+        thdforce = espressopp.integrator.TDforce(system, verletlist)
+        if len(tabletfs) > 1 and ':' not in args.tabletf:
+            raise RuntimeError('Only single global thermodynamic force can be specify')
+        if len(tabletfs) == 1:
+            # Set TF force for CG types
+            for type_id, type_data in input_conf.atomtypeparams.items():
+                if type_data['particletype'] == 'V':  # This is CG particle type
+                    print('Adding TF force for type: {} ({})'.format(type_data.get('atnum', type_data.get('atname'))))
+                    thdforce.addForce(itype=3, filename=tabletfs[0], type=type_id)
+        else:
+            type_name2type_id = {
+                td.get('atnum', td.get('atname')): tid
+                for tid, td in input_conf.atomtypeparams.items()}
+            for tblfs in tabletfs:
+                table_name, type_name = tblfs.split(':')
+                if type_name not in type_name2type_id:
+                    raise RuntimeError('Type name {} not found'.format(type_name))
+                thdforce.addForce(itype=3, filename=table_name, type=type_name2type_id[type_name])
+                print('Set TF force for type: {} table: {}'.format(type_name, table_name))
+
     if args.cap_force:
         print('Define maximum cap-force in the system (max: {})'.format(args.cap_force))
         cap_force = espressopp.integrator.CapForce(system, args.cap_force)
@@ -237,51 +260,78 @@ def main():  # NOQA
     # Let's compute density along X-axis
     xdensity_dr = 0.05  # Bohr radius (nm)
     xdensity_bins = int(box[0]/xdensity_dr)
-    if args.compute_density_profile:
+    compute_density_profile = args.compute_density_profile or args.calculate_tf
+    if compute_density_profile:
         xdensity_comp = espressopp.analysis.XDensity(system)
         xdensity = numpy.array(xdensity_comp.compute(xdensity_bins))
 
-    trj_filename = '{}_{}_traj_at'.format(args.output_prefix, rng_seed)
-    dump_conf = None
-    if args.output_format == 'gro':
-        trj_filename = '{}.gro'.format(trj_filename)
-        dump_conf = espressopp.io.DumpGROAdress(
-            system,
-            ftpl,
-            integrator,
-            filename='{}.gro'.format(trj_filename),
-            unfolded=True)
-    elif args.output_format == 'xtc':
-        trj_filename = '{}.gro'.format(trj_filename)
-        dump_conf = espressopp.io.DumpXTCAdress(
-            system,
-            ftpl,
-            integrator,
-            unfolded=True,
-            append=True,
-            filename='{}.xtc'.format(trj_filename))
-    elif args.output_format:
-        raise RuntimeError('Traj dump {} not supported'.format(args.output_format))
+    if args.calculate_tf:
+        N = 6.022141e23
+        T = args.temperature
+        kbT = -1 * 0.00831451 * T
+        kappa = 4.5e-5
+        prefac = 1.0 / (args.tf_target_density * kappa * 10)
 
-    if dump_conf:
-        ext_dump = espressopp.integrator.ExtAnalyze(dump_conf, args.trj_collect)
-        integrator.addExtension(ext_dump)
-        print('Collect trajectory every {} in {}'.format(trj_filename, args.trj_collect))
+        for _s in range(args.tf_max_steps):
+            # Main integrator loop.
+            for k in range(k_steps):
+                integrator.run(args.int_step)
+                system_analysis.info()
+                xdensity += numpy.array(xdensity_comp.compute(xdensity_bins))
 
-    # Main integrator loop.
-    for k in range(k_steps):
-        integrator.run(args.int_step)
-        system_analysis.info()
-        if args.compute_density_profile:
-            xdensity += numpy.array(xdensity_comp.compute(xdensity_bins))
+            xdensity = xdensity / k_steps
+            xdensity = numpy.column_stack((numpy.arange(0, box[0], xdensity_dr), xdensity))
+            xdensity_file = '{}_{}_xdensity_s{}.csv'.format(args.output_prefix, rng_seed, _s)
+            numpy.savetxt(xdensity_file, xdensity)
 
-    if args.compute_density_profile:
-        xdensity = xdensity / k_steps
-        xdensity = numpy.column_stack((numpy.arange(0, box[0], xdensity_dr), xdensity))
 
-        xdensity_file = '{}_{}_xdensity.csv'.format(args.output_prefix, rng_seed)
-        numpy.savetxt(xdensity_file, xdensity)
-        print('Saved x-density: {}'.format(xdensity_file))
+
+            print('Saved x-density: {}'.format(xdensity_file))
+
+    else:  # Standard simulation
+        # Do not store trajectory when requested calculate TF.
+        trj_filename = '{}_{}_traj_at'.format(args.output_prefix, rng_seed)
+        dump_conf = None
+        if args.output_format == 'gro':
+            trj_filename = '{}.gro'.format(trj_filename)
+            dump_conf = espressopp.io.DumpGROAdress(
+                system,
+                ftpl,
+                integrator,
+                filename='{}.gro'.format(trj_filename),
+                unfolded=True)
+        elif args.output_format == 'xtc':
+            trj_filename = '{}.gro'.format(trj_filename)
+            dump_conf = espressopp.io.DumpXTCAdress(
+                system,
+                ftpl,
+                integrator,
+                unfolded=True,
+                append=True,
+                filename='{}.xtc'.format(trj_filename))
+        elif args.output_format:
+            raise RuntimeError('Traj dump {} not supported'.format(args.output_format))
+
+        if dump_conf:
+            ext_dump = espressopp.integrator.ExtAnalyze(dump_conf, args.trj_collect)
+            integrator.addExtension(ext_dump)
+            print('Collect trajectory every {} in {}'.format(trj_filename, args.trj_collect))
+
+        # Main integrator loop.
+        for k in range(k_steps):
+            integrator.run(args.int_step)
+            system_analysis.info()
+            if compute_density_profile:
+                xdensity += numpy.array(xdensity_comp.compute(xdensity_bins))
+
+        # Calculate average of the density profile.
+        if compute_density_profile:
+            xdensity = xdensity / k_steps
+            xdensity = numpy.column_stack((numpy.arange(0, box[0], xdensity_dr), xdensity))
+
+            xdensity_file = '{}_{}_xdensity.csv'.format(args.output_prefix, rng_seed)
+            numpy.savetxt(xdensity_file, xdensity)
+            print('Saved x-density: {}'.format(xdensity_file))
 
     print('Finished!')
     print('Total time: {}'.format(time.time() - time0))

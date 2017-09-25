@@ -1,13 +1,15 @@
 """
-Copyright (C) 2017 Jakub Krajniak <jkrajniak@gmail.com>
+Copyright (C) 2017
+    Jakub Krajniak (jkrajniak at gmail.com)
 
-This file is distributed under free software licence:
-you can redistribute it and/or modify it under the terms of the
-GNU General Public License as published by
+This file is part of AdResSLab.
+
+AdResSLab is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 
-This program is distributed in the hope that it will be useful,
+AdResSLab is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
@@ -48,7 +50,7 @@ def _args_md():
     trajectory_group.add_argument('--output_format', choices=('gro', 'xtc', 'xyz'), help='Output format', default='gro')
 
     misc_group = parser.add_argument_group('Misc')
-    parser.add_argument('--remove_com', type=ast.literal_eval, help='Removes total velocity of the system', default=False)
+    misc_group.add_argument('--remove_com', type=ast.literal_eval, help='Removes total velocity of the system', default=False)
     misc_group.add_argument('--cap_force', type=float, help='Define maximum cap-force in the system')
     misc_group.add_argument('--compute_density_profile', type=ast.literal_eval, default=False,
                             help='Should compute density profile (x-direction)')
@@ -87,6 +89,12 @@ def _args_md():
     interactions_group.add_argument('--table_groups', default=None,
                         help='Name of CG groups to read from tables')
     interactions_group.add_argument('--exclusion_list', default=None, help='The exclusion list')
+    interactions_group.add_argument(
+        '--tabletf',
+        default=None,
+        help=('Thermodynamic force tables and CG particle type. E.g. table_1.xvg:CG_type1,'
+              ' table_2.xvg:CG_type2 instead of using CG_type1 you can set global table by set table_tg.xvg without'
+              ' specifying the CG type.'))
 
     adress_group = parser.add_argument_group('AdResS settings')
     adress_group.add_argument('--adress_ex', help='Size of explicit region', type=float, required=True)
@@ -96,5 +104,13 @@ def _args_md():
         help='Where is the centre of explicit region. Format: "box_centre" - for box centre; x,y,z - specific position.')
     adress_group.add_argument('--adress_use_sphere', help='If True then spherical AdResS is used', default=False,
                               type=ast.literal_eval)
+
+    compute_tf = parser.add_argument_group('Thermodynamic force calculation')
+    compute_tf.add_argument(
+        '--calculate_tf',
+        default=False,
+        help='If set to true then thermodynamic force will be calculated', type=ast.literal_eval)
+    compute_tf.add_argument('--tf_target_density', help='Target density value', type=float, default=None)
+    compute_tf.add_argument('--tf_max_steps', default=100, type=int)
 
     return parser

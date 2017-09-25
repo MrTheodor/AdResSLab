@@ -15,4 +15,4 @@ Structure:
 Requirements
 -------------
 
-Currently, it requires ESPP from branch devel: https://github.com/MrTheodor/espressopp/tree/devel
+Currently, it requires ESPP from the branch devel: https://github.com/MrTheodor/espressopp/tree/devel

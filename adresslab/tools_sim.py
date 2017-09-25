@@ -1,13 +1,15 @@
 """
-Copyright (C) 2015-2016 Jakub Krajniak <jkrajniak@gmail.com>
+Copyright (C) 2017
+    Jakub Krajniak (jkrajniak at gmail.com)
 
-This file is distributed under free software licence:
-you can redistribute it and/or modify it under the terms of the
-GNU General Public License as published by
+This file is part of AdResSLab.
+
+AdResSLab is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 
-This program is distributed in the hope that it will be useful,
+AdResSLab is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
