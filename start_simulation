@@ -163,6 +163,11 @@ def main():  # NOQA
         adr_centre = [box[0]/2.0, box[1]/2.0, box[2]/2.0]
     else:
         adr_centre = map(float, args.adress_centre.split(','))
+
+    if args.adress_use_sphere and args.calculate_tf:
+        # TODO(jakub): Add support for spherical AdResS region in case of TD-force calculation.
+        raise RuntimeError('Sphere AdResS region not supported for TD-force calculation')
+
     print('Centre coordinates: {}'.format(adr_centre))
     print('Spherical region: {}'.format(args.adress_use_sphere))
 
@@ -226,7 +231,11 @@ def main():  # NOQA
     adress = espressopp.integrator.Adress(system, verletlist, ftpl)
     integrator.addExtension(adress)
 
+    # Thermodynamic force
+    use_thforce = False
+    single_thforce = False
     if args.tabletf:
+        use_thforce = True
         print('Setting thermodynamic force: {}'.format(args.tabletf))
         tabletfs = args.tabletf.split(',')
         thdforce = espressopp.integrator.TDforce(system, verletlist)
@@ -238,6 +247,7 @@ def main():  # NOQA
                 if type_data['particletype'] == 'V':  # This is CG particle type
                     print('Adding TF force for type: {} ({})'.format(type_data.get('atnum', type_data.get('atname'))))
                     thdforce.addForce(itype=3, filename=tabletfs[0], type=type_id)
+            single_thforce = True
         else:
             type_name2type_id = {
                 td.get('atnum', td.get('atname')): tid
@@ -265,12 +275,13 @@ def main():  # NOQA
         xdensity_comp = espressopp.analysis.XDensity(system)
         xdensity = numpy.array(xdensity_comp.compute(xdensity_bins))
 
+    if args.calculate_tf and not single_thforce:
+        # TODO(jakub): Generalized it.
+        raise RuntimeError('Calculation of TD-force only for a single table.')
+
     if args.calculate_tf:
-        N = 6.022141e23
-        T = args.temperature
-        kbT = -1 * 0.00831451 * T
         kappa = 4.5e-5
-        prefac = 1.0 / (args.tf_target_density * kappa * 10)
+        prefac = 1.0 / (args.tf_target_density * kappa)
 
         for _s in range(args.tf_max_steps):
             # Main integrator loop.
@@ -282,12 +293,12 @@ def main():  # NOQA
             xdensity = xdensity / k_steps
             xdensity = numpy.column_stack((numpy.arange(0, box[0], xdensity_dr), xdensity))
             xdensity_file = '{}_{}_xdensity_s{}.csv'.format(args.output_prefix, rng_seed, _s)
+            print('Saved x-density: {}'.format(xdensity_file))
             numpy.savetxt(xdensity_file, xdensity)
 
-
-
-            print('Saved x-density: {}'.format(xdensity_file))
-
+            rho = xdensity[:, 1] * args.tf_prefactor
+            rho_s = savgol_filter(rho, 21, 5, mode='nearest')
+            drho_s = savgol_filter(rho_s, 21, 5, deriv=1, mode='nearest')
     else:  # Standard simulation
         # Do not store trajectory when requested calculate TF.
         trj_filename = '{}_{}_traj_at'.format(args.output_prefix, rng_seed)

@@ -110,7 +110,7 @@ def _args_md():
         '--calculate_tf',
         default=False,
         help='If set to true then thermodynamic force will be calculated', type=ast.literal_eval)
-    compute_tf.add_argument('--tf_target_density', help='Target density value', type=float, default=None)
+    compute_tf.add_argument('--tf_prefactor', help='Prefactor', type=float, default=1.0)
     compute_tf.add_argument('--tf_max_steps', default=100, type=int)
 
     return parser
