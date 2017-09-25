@@ -280,9 +280,10 @@ def main():  # NOQA
         raise RuntimeError('Calculation of TD-force only for a single table.')
 
     if args.calculate_tf:
-        kappa = 4.5e-5
-        prefac = 1.0 / (args.tf_target_density * kappa)
-
+        # Iterate over max_steps
+        x_r = numpy.arange(0, box[0], xdensity_dr)
+        adr_centre_idx = int(adr_centre[0]/xdensity_dr)
+        adr_ex_idx = int(args.adress_ex/xdensity_dr)
         for _s in range(args.tf_max_steps):
             # Main integrator loop.
             for k in range(k_steps):
@@ -291,14 +292,22 @@ def main():  # NOQA
                 xdensity += numpy.array(xdensity_comp.compute(xdensity_bins))
 
             xdensity = xdensity / k_steps
-            xdensity = numpy.column_stack((numpy.arange(0, box[0], xdensity_dr), xdensity))
+
             xdensity_file = '{}_{}_xdensity_s{}.csv'.format(args.output_prefix, rng_seed, _s)
             print('Saved x-density: {}'.format(xdensity_file))
-            numpy.savetxt(xdensity_file, xdensity)
+            numpy.savetxt(xdensity_file, numpy.column_stack(x_r, xdensity))
 
-            rho = xdensity[:, 1] * args.tf_prefactor
-            rho_s = savgol_filter(rho, 21, 5, mode='nearest')
-            drho_s = savgol_filter(rho_s, 21, 5, deriv=1, mode='nearest')
+            # For TF we need only part of the density profile.
+            half_xdensity = xdensity[adr_centre_idx:]
+            xdensity[:adr_centre_idx] = half_xdensity[0]
+            rho = numpy.zeros(xdensity.shape[0])
+            rho[adr_centre_idx:] = half_xdensity * args.tf_prefactor
+            rho_s = savgol_filter(rho, 21, 5, mode='nearest')  # Make it smooth
+            drho_s = savgol_filter(rho_s, 21, 5, deriv=1, mode='nearest')   # Get the force
+            # Save the new table
+            tf_new = '{}_{}_th_s{}.xvg'.format(args.output_prefix, rng_seed, _s)
+            numpy.savetxt(tf_new, numpy.column_stack(x_r, xdensity, drho_s))
+            print('Saved new tf force to: {}'.format(tf_new))
     else:  # Standard simulation
         # Do not store trajectory when requested calculate TF.
         trj_filename = '{}_{}_traj_at'.format(args.output_prefix, rng_seed)
