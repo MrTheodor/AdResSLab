@@ -235,25 +235,53 @@ def main():  # NOQA
     espressopp.tools.AdressDecomp(system, integrator)
 
     # Let's compute density along X-axis
-    xdensity_comp = espressopp.analysis.XDensity(system)
-    xdensity = numpy.array(xdensity_comp.compute(100))
+    xdensity_dr = 0.05  # Bohr radius (nm)
+    xdensity_bins = int(box[0]/xdensity_dr)
+    if args.compute_density_profile:
+        xdensity_comp = espressopp.analysis.XDensity(system)
+        xdensity = numpy.array(xdensity_comp.compute(xdensity_bins))
 
-    dump_conf_gro = espressopp.io.DumpGROAdress(system, ftpl, integrator, filename='traj.gro', unfolded=True)
+    trj_filename = '{}_{}_traj_at'.format(args.output_prefix, rng_seed)
+    dump_conf = None
+    if args.output_format == 'gro':
+        trj_filename = '{}.gro'.format(trj_filename)
+        dump_conf = espressopp.io.DumpGROAdress(
+            system,
+            ftpl,
+            integrator,
+            filename='{}.gro'.format(trj_filename),
+            unfolded=True)
+    elif args.output_format == 'xtc':
+        trj_filename = '{}.gro'.format(trj_filename)
+        dump_conf = espressopp.io.DumpXTCAdress(
+            system,
+            ftpl,
+            integrator,
+            unfolded=True,
+            append=True,
+            filename='{}.xtc'.format(trj_filename))
+    elif args.output_format:
+        raise RuntimeError('Traj dump {} not supported'.format(args.output_format))
+
+    if dump_conf:
+        ext_dump = espressopp.integrator.ExtAnalyze(dump_conf, args.trj_collect)
+        integrator.addExtension(ext_dump)
+        print('Collect trajectory every {} in {}'.format(trj_filename, args.trj_collect))
 
     # Main integrator loop.
     for k in range(k_steps):
         integrator.run(args.int_step)
         system_analysis.info()
-        xdensity += numpy.array(xdensity_comp.compute(100))
-        dump_conf_gro.dump()
+        if args.compute_density_profile:
+            xdensity += numpy.array(xdensity_comp.compute(xdensity_bins))
 
-    xdensity = xdensity / k_steps
-    dr = box[0]/100
-    xdensity = numpy.column_stack((numpy.arange(0, box[0], dr), xdensity))
+    if args.compute_density_profile:
+        xdensity = xdensity / k_steps
+        xdensity = numpy.column_stack((numpy.arange(0, box[0], xdensity_dr), xdensity))
 
-    xdensity_file = '{}_{}_xdensity.csv'.format(args.output_prefix, args.rng_seed)
-    numpy.savetxt(xdensity_file, xdensity)
-    print('Saved x-density: {}'.format(xdensity_file))
+        xdensity_file = '{}_{}_xdensity.csv'.format(args.output_prefix, rng_seed)
+        numpy.savetxt(xdensity_file, xdensity)
+        print('Saved x-density: {}'.format(xdensity_file))
 
     print('Finished!')
     print('Total time: {}'.format(time.time() - time0))

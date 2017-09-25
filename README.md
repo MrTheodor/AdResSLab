@@ -11,3 +11,8 @@ Structure:
  - ``adresslab/``  - the main code
 
  - ``examples/`` - the set of examples
+
+Requirements
+-------------
+
+Currently, it requires ESPP from branch devel: https://github.com/MrTheodor/espressopp/tree/devel

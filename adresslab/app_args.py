@@ -43,9 +43,15 @@ def _args_md():
                         help='Prefix for output files')
     parser.add_argument('--energy_collect', default=1000, help='How often collect energy terms', type=int)
 
+    trajectory_group = parser.add_argument_group('Trajectory')
+    trajectory_group.add_argument('--trj_collect', default=1000, help='How often to store trajectory', type=int)
+    trajectory_group.add_argument('--output_format', choices=('gro', 'xtc', 'xyz'), help='Output format', default='gro')
+
     misc_group = parser.add_argument_group('Misc')
     parser.add_argument('--remove_com', type=ast.literal_eval, help='Removes total velocity of the system', default=False)
     misc_group.add_argument('--cap_force', type=float, help='Define maximum cap-force in the system')
+    misc_group.add_argument('--compute_density_profile', type=ast.literal_eval, default=False,
+                            help='Should compute density profile (x-direction)')
 
     thermostat_group = parser.add_argument_group('Thermostat')
     thermostat_group.add_argument('--thermostat',
@@ -90,11 +96,5 @@ def _args_md():
         help='Where is the centre of explicit region. Format: "box_centre" - for box centre; x,y,z - specific position.')
     adress_group.add_argument('--adress_use_sphere', help='If True then spherical AdResS is used', default=False,
                               type=ast.literal_eval)
-
-    em_group = parser.add_argument_group('Energy minimization')
-    em_group.add_argument('--em', help='Maximum number of steps to perform in EM', type=int, default=0)
-    em_group.add_argument('--em_gamma', help='Gamma parameter for force damping', type=float, default=0.0001)
-    em_group.add_argument('--em_ftol', help='Force tolerance', type=float, default=10.0)
-    em_group.add_argument('--em_max_d', help='Max displacement x box dimension', default=0.001, type=float)
 
     return parser
