@@ -1055,7 +1055,6 @@ def setCoulombInteractions(system, verletlist, rc, atomtypeparams,
                             if ((pi['particletype'] == 'V' and pj['particletype'] == 'V'))
                             })
 
-    print(atomtypeparams)
     print('Number of AT coulombic pairs: {}'.format(len(at_type_pairs)))
     if at_type_pairs or cg_type_pairs:
         pot = espressopp.interaction.ReactionFieldGeneralized(
