@@ -313,7 +313,7 @@ def main():  # NOQA
 
             # For TF we need only part of the density profile.
             rho = numpy.ones(xdensity.shape[0]) * average_density  # Set everywhere average density except hy region
-            rho[adr_ex_idx:adr_hy_idx] = xdensity[adr_ex_idx:adr_hy_idx]
+            rho[adr_ex_idx-1:adr_hy_idx+1] = xdensity[adr_ex_idx-1:adr_hy_idx+1]
             rho_s = savgol_filter(rho, 21, 5, mode='nearest')  # Make it smooth
             drho_s = savgol_filter(rho_s, 21, 5, deriv=1, mode='nearest')   # Get the force
             new_th_force = last_th_force - args.tf_prefactor*drho_s
