@@ -245,7 +245,7 @@ def main():  # NOQA
             # Set TF force for CG types
             for type_id, type_data in input_conf.atomtypeparams.items():
                 if type_data['particletype'] == 'V':  # This is CG particle type
-                    print('Adding TF force for type: {} ({})'.format(type_data.get('atnum', type_data.get('atname'))))
+                    print('Adding TF force for type: {} ({})'.format(type_data.get('atnum', type_data.get('atname')), type_id))
                     thdforce.addForce(itype=3, filename=tabletfs[0], type=type_id)
             single_thforce = True
         else:
@@ -295,7 +295,7 @@ def main():  # NOQA
 
             xdensity_file = '{}_{}_xdensity_s{}.csv'.format(args.output_prefix, rng_seed, _s)
             print('Saved x-density: {}'.format(xdensity_file))
-            numpy.savetxt(xdensity_file, numpy.column_stack(x_r, xdensity))
+            numpy.savetxt(xdensity_file, numpy.column_stack((x_r, xdensity)))
 
             # For TF we need only part of the density profile.
             half_xdensity = xdensity[adr_centre_idx:]
@@ -306,8 +306,11 @@ def main():  # NOQA
             drho_s = savgol_filter(rho_s, 21, 5, deriv=1, mode='nearest')   # Get the force
             # Save the new table
             tf_new = '{}_{}_th_s{}.xvg'.format(args.output_prefix, rng_seed, _s)
-            numpy.savetxt(tf_new, numpy.column_stack(x_r, xdensity, drho_s))
+            numpy.savetxt(tf_new, numpy.column_stack((x_r, xdensity, drho_s)))
             print('Saved new tf force to: {}'.format(tf_new))
+            for type_id, type_data in input_conf.atomtypeparams.items():
+                if type_data['particletype'] == 'V':
+                    thdforce.addForce(itype=3, filename=tf_name, type=type_id)
     else:  # Standard simulation
         # Do not store trajectory when requested calculate TF.
         trj_filename = '{}_{}_traj_at'.format(args.output_prefix, rng_seed)
