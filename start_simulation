@@ -268,9 +268,14 @@ def main():  # NOQA
     espressopp.tools.AdressDecomp(system, integrator)
 
     # Let's compute density along X-axis
-    xdensity_dr = 0.05  # Bohr radius (nm)
+    xdensity_dr = 0.01
     xdensity_bins = int(box[0]/xdensity_dr)
     compute_density_profile = args.compute_density_profile or args.calculate_tf
+    # Only atomistic particles
+    at_masses = [m for i, m in enumerate(input_conf.masses)
+                 if input_conf.atomtypeparams[input_conf.types[i]]['particletype'] == 'A']
+    average_density = sum(at_masses)/(box[0]*box[1]*box[2])
+    print('Average density: {}'.format(average_density))
     if compute_density_profile:
         xdensity_comp = espressopp.analysis.XDensity(system)
         xdensity = numpy.array(xdensity_comp.compute(xdensity_bins))
@@ -280,8 +285,11 @@ def main():  # NOQA
         raise RuntimeError('Calculation of TD-force only for a single table.')
 
     if args.calculate_tf:
-        # Iterate over max_steps
         x_r = numpy.arange(0, box[0], xdensity_dr)
+        adr_centre_idx = int(adr_centre[0]/xdensity_dr)  # index of centre
+        adr_ex_idx = int((adr_centre[0]+args.adress_ex)/xdensity_dr)  # end of ex region
+        adr_hy_idx = int((adr_centre[0] + args.adress_ex + args.adress_hy) / xdensity_dr)  # end of hy region
+        # Iterate over max_steps
         adr_centre_idx = int(adr_centre[0]/xdensity_dr)
         adr_ex_idx = int((adr_centre[0]+args.adress_ex)/xdensity_dr)
         adr_hy_idx = int((adr_centre[0] + args.adress_ex + args.adress_hy) / xdensity_dr)
@@ -295,29 +303,28 @@ def main():  # NOQA
 
         for _s in range(args.tf_max_steps):
             # Main integrator loop.
+            xdensity = numpy.array(xdensity_comp.compute(xdensity_bins))
             for k in range(k_steps):
                 integrator.run(args.int_step)
                 system_analysis.info()
                 xdensity += numpy.array(xdensity_comp.compute(xdensity_bins))
 
-            xdensity = xdensity / k_steps
+            xdensity = xdensity / (k_steps + 1)
+            xdensity *= average_density
 
             xdensity_file = '{}_{}_xdensity_s{}.csv'.format(args.output_prefix, rng_seed, _s)
             print('Saved x-density: {}'.format(xdensity_file))
             numpy.savetxt(xdensity_file, numpy.column_stack((x_r, xdensity)))
 
             # For TF we need only part of the density profile.
-            xdensity[:adr_centre_idx] = 1.0
-            xdensity[adr_hy_idx:] = 1.0
-            hy_xdensity = xdensity[adr_ex_idx:adr_hy_idx]
-            rho = numpy.ones(xdensity.shape[0])
-            rho[adr_ex_idx:adr_hy_idx] = hy_xdensity
+            rho = numpy.ones(xdensity.shape[0]) * average_density  # Set everywhere average density except hy region
+            rho[adr_ex_idx:adr_hy_idx] = xdensity[adr_ex_idx:adr_hy_idx]
             rho_s = savgol_filter(rho, 21, 5, mode='nearest')  # Make it smooth
             drho_s = savgol_filter(rho_s, 21, 5, deriv=1, mode='nearest')   # Get the force
             new_th_force = last_th_force - args.tf_prefactor*drho_s
             # Save the new table
             tf_new = '{}_{}_th_s{}.xvg'.format(args.output_prefix, rng_seed, _s)
-            numpy.savetxt(tf_new, numpy.column_stack((x_r, rho, drho_s)))
+            numpy.savetxt(tf_new, numpy.column_stack((x_r, rho, args.tf_prefactor*drho_s)))
             print('Saved new tf force to: {}'.format(tf_new))
             tools_adress.set_single_th_force(thdforce, input_conf, tf_new)
     else:  # Standard simulation
@@ -358,8 +365,8 @@ def main():  # NOQA
 
         # Calculate average of the density profile.
         if compute_density_profile:
-            xdensity = xdensity / k_steps
-            xdensity = numpy.column_stack((numpy.arange(0, box[0], xdensity_dr), xdensity))
+            xdensity = xdensity / (k_steps+1)
+            xdensity = numpy.column_stack((numpy.arange(0, box[0], xdensity_dr), xdensity*average_density))
 
             xdensity_file = '{}_{}_xdensity.csv'.format(args.output_prefix, rng_seed)
             numpy.savetxt(xdensity_file, xdensity)
