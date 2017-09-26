@@ -274,9 +274,14 @@ def main():  # NOQA
     xdensity_dr = 0.05  # Bohr radius (nm)
     xdensity_bins = int(box[0]/xdensity_dr)
     compute_density_profile = args.compute_density_profile or args.calculate_tf
+    # Only atomistic particles
+    at_masses = [m for i, m in enumerate(input_conf.masses)
+                 if input_conf.atomtypeparams[input_conf.types[i]]['particletype'] == 'A']
+    average_density = sum(at_masses)/(box[0]*box[1]*box[2])
+    print('Average density: {}'.format(average_density))
     if compute_density_profile:
         xdensity_comp = espressopp.analysis.XDensity(system)
-        xdensity = numpy.array(xdensity_comp.compute(xdensity_bins))
+        xdensity = numpy.array(xdensity_comp.compute(xdensity_bins))*average_density
 
     if args.calculate_tf and not single_thforce:
         # TODO(jakub): Generalized it.
@@ -296,6 +301,7 @@ def main():  # NOQA
                 xdensity += numpy.array(xdensity_comp.compute(xdensity_bins))
 
             xdensity = xdensity / k_steps
+            xdensity *= average_density
 
             xdensity_file = '{}_{}_xdensity_s{}.csv'.format(args.output_prefix, rng_seed, _s)
             print('Saved x-density: {}'.format(xdensity_file))
@@ -355,6 +361,7 @@ def main():  # NOQA
         # Calculate average of the density profile.
         if compute_density_profile:
             xdensity = xdensity / k_steps
+            xdensity *= average_density
             xdensity = numpy.column_stack((numpy.arange(0, box[0], xdensity_dr), xdensity))
 
             xdensity_file = '{}_{}_xdensity.csv'.format(args.output_prefix, rng_seed)
