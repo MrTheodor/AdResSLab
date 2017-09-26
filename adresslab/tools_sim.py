@@ -26,7 +26,7 @@ import espressopp  # noqa
 __doc__ = 'The tools for the simulation.'
 
 
-def setSystemAnalysis(system, integrator, args, interval, filename_suffix=None, particle_groups=None):
+def setSystemAnalysis(system, integrator, args, interval, filename_suffix=None, particle_types=None):
     """Sets system analysis routine
 
     Args:
@@ -34,7 +34,7 @@ def setSystemAnalysis(system, integrator, args, interval, filename_suffix=None, 
         integrator: The espressopp.integrator.MDIntegrator object
         interval: How often collect data from the observables.
         filename_suffix: Output filename suffix.
-        particle_groups: List of particle groups to measure temperature on it.
+        particle_types: The types of particles that the temperature will be computed (AT particles)
 
     Returns:
         The tuple with ExtAnalyze object and SystemMonitor object.
@@ -49,10 +49,12 @@ def setSystemAnalysis(system, integrator, args, interval, filename_suffix=None, 
         integrator,
         espressopp.analysis.SystemMonitorOutputCSV(energy_file))
     temp_comp = espressopp.analysis.Temperature(system)
+    if particle_types:
+        for t in particle_types:
+            temp_comp.add_type(t)
     system_analysis.add_observable('T', temp_comp)
 
     system_analysis.add_observable('Ekin', espressopp.analysis.KineticEnergy(system, temp_comp))
-
 
     try:
         system_info_filter = args.system_info_filter.split(',')
