@@ -50,6 +50,7 @@ def setSystemAnalysis(system, integrator, args, interval, filename_suffix=None, 
         espressopp.analysis.SystemMonitorOutputCSV(energy_file))
     temp_comp = espressopp.analysis.Temperature(system)
     if particle_types:
+        print('Observe temperature only of particles of types: {}'.format(particle_types))
         for t in particle_types:
             temp_comp.add_type(t)
     system_analysis.add_observable('T', temp_comp)

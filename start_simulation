@@ -218,7 +218,9 @@ def main():  # NOQA
 
     print("Added tuples, decomposing now ...")
 
-    ext_analysis, system_analysis = tools.setSystemAnalysis(system, integrator, args, args.energy_collect)
+    ext_analysis, system_analysis = tools.setSystemAnalysis(
+        system, integrator, args, args.energy_collect,
+        particle_types=[t for t, d in input_conf.atomtypeparams.items() if d['particletype'] == 'A'])
 
     if args.remove_com > 0:
         print('Removes total velocity of the system every {} steps'.format(args.remove_com))
