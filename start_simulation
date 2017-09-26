@@ -300,16 +300,16 @@ def main():  # NOQA
             numpy.savetxt(xdensity_file, numpy.column_stack((x_r, xdensity)))
 
             # For TF we need only part of the density profile.
-            half_xdensity = xdensity[adr_centre_idx:]
             xdensity[:adr_centre_idx] = 1.0
             xdensity[adr_hy_idx:] = 1.0
-            rho = numpy.zeros(xdensity.shape[0])
+            half_xdensity = xdensity[adr_centre_idx:]
+            rho = numpy.ones(xdensity.shape[0])
             rho[adr_centre_idx:] = half_xdensity * args.tf_prefactor
             rho_s = savgol_filter(rho, 21, 5, mode='nearest')  # Make it smooth
             drho_s = savgol_filter(rho_s, 21, 5, deriv=1, mode='nearest')   # Get the force
             # Save the new table
             tf_new = '{}_{}_th_s{}.xvg'.format(args.output_prefix, rng_seed, _s)
-            numpy.savetxt(tf_new, numpy.column_stack((x_r, xdensity, drho_s)))
+            numpy.savetxt(tf_new, numpy.column_stack((x_r, rho, drho_s)))
             print('Saved new tf force to: {}'.format(tf_new))
             for type_id, type_data in input_conf.atomtypeparams.items():
                 if type_data['particletype'] == 'V':
