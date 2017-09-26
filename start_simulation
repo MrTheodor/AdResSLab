@@ -27,7 +27,7 @@ import os
 import time
 from scipy.signal import savgol_filter
 
-from adresslab import files_io
+from adresslab import files_io, tools_adress
 from adresslab import tools_sim as tools
 from adresslab import gromacs_topology
 
@@ -246,10 +246,7 @@ def main():  # NOQA
             raise RuntimeError('Only single global thermodynamic force can be specify')
         if len(tabletfs) == 1:
             # Set TF force for CG types
-            for type_id, type_data in input_conf.atomtypeparams.items():
-                if type_data['particletype'] == 'V':  # This is CG particle type
-                    print('Adding TF force for type: {} ({})'.format(type_data.get('atnum', type_data.get('atname')), type_id))
-                    thdforce.addForce(itype=3, filename=tabletfs[0], type=type_id)
+            tools_adress.set_single_th_force(thdforce, input_conf, tabletfs[0])
             single_thforce = True
         else:
             type_name2type_id = {
@@ -288,6 +285,14 @@ def main():  # NOQA
         adr_centre_idx = int(adr_centre[0]/xdensity_dr)
         adr_ex_idx = int((adr_centre[0]+args.adress_ex)/xdensity_dr)
         adr_hy_idx = int((adr_centre[0] + args.adress_ex + args.adress_hy) / xdensity_dr)
+        # Set zero TH force for step0
+        tf_new = '{}_{}_th_s{}.xvg'.format(args.output_prefix, rng_seed, 0)
+        zero_th = numpy.zeros((3, x_r.shape[0]))
+        zero_th[:, 0] = x_r
+        numpy.savetxt(tf_new, zero_th)
+        tools_adress.set_single_th_force(thdforce, input_conf, tf_new)
+        last_th_force = zero_th[:, 2]
+
         for _s in range(args.tf_max_steps):
             # Main integrator loop.
             for k in range(k_steps):
@@ -306,16 +311,15 @@ def main():  # NOQA
             xdensity[adr_hy_idx:] = 1.0
             hy_xdensity = xdensity[adr_ex_idx:adr_hy_idx]
             rho = numpy.ones(xdensity.shape[0])
-            rho[adr_ex_idx:adr_hy_idx] = hy_xdensity * args.tf_prefactor
+            rho[adr_ex_idx:adr_hy_idx] = hy_xdensity
             rho_s = savgol_filter(rho, 21, 5, mode='nearest')  # Make it smooth
             drho_s = savgol_filter(rho_s, 21, 5, deriv=1, mode='nearest')   # Get the force
+            new_th_force = last_th_force - args.tf_prefactor*drho_s
             # Save the new table
             tf_new = '{}_{}_th_s{}.xvg'.format(args.output_prefix, rng_seed, _s)
             numpy.savetxt(tf_new, numpy.column_stack((x_r, rho, drho_s)))
             print('Saved new tf force to: {}'.format(tf_new))
-            for type_id, type_data in input_conf.atomtypeparams.items():
-                if type_data['particletype'] == 'V':
-                    thdforce.addForce(itype=3, filename=tf_new, type=type_id)
+            tools_adress.set_single_th_force(thdforce, input_conf, tf_new)
     else:  # Standard simulation
         # Do not store trajectory when requested calculate TF.
         trj_filename = '{}_{}_traj_at'.format(args.output_prefix, rng_seed)

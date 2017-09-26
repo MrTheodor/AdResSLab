@@ -17,3 +17,10 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
+
+
+def set_single_th_force(thdforce, input_conf, tf_new):
+    """Sets single thermodynamic force for all types of CG particles."""
+    for type_id, type_data in input_conf.atomtypeparams.items():
+        if type_data['particletype'] == 'V':
+            thdforce.addForce(itype=3, filename=tf_new, type=type_id)
