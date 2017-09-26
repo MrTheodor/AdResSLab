@@ -196,7 +196,7 @@ def setTabulatedInteractions(atomtypeparams, cutoff, interaction, table_groups=[
     return interaction
 
 
-def genParticleList(input_conf, gro_file, use_velocity=False, use_charge=False, adress=False):  #NOQA
+def genParticleList(input_conf, gro_file, use_charge=False, adress=False, temperature=None):  #NOQA
     """Generates particle list
     Args:
         input_conf: The tuple generate by read method.
@@ -204,19 +204,24 @@ def genParticleList(input_conf, gro_file, use_velocity=False, use_charge=False, 
         use_velocity: If set to true then velocity will be read.
         use_charge: If set to true then charge will be read.
         adress: If set to true then adress_tuple will be generated.
+        temperature: If temperature is set then velocity will be generated from Maxwell-Boltzmann distr.
     Returns:
         List of property names and particle list.
     """
     props = ['id', 'type', 'pos']
     use_mass = bool(input_conf.masses)
-    use_velocity = use_velocity and bool(input_conf.vx)
     use_charge = use_charge and bool(input_conf.charges)
     if use_mass:
         props.append('mass')
-    if use_velocity:
-        props.append('v')
     if use_charge:
         props.append('q')
+    vx = vy = vz = None
+    if temperature:
+        props.append('v')
+        at_masses = len([
+            m for i, m in enumerate(input_conf.masses)
+            if input_conf.atomtypeparams[input_conf.types[i]]['particletype'] == 'A'])
+        vx, vy, vz = espressopp.tools.velocities(temperature, len(at_masses), at_masses)
 
     Particle = collections.namedtuple('Particle', props)
     particle_list = []
@@ -226,6 +231,7 @@ def genParticleList(input_conf, gro_file, use_velocity=False, use_charge=False, 
         Particle = collections.namedtuple('Particle', props)
         adress_tuple = []
         tmptuple = []
+        at_id = 0
         for pid in range(num_particles):
             atom_type = input_conf.types[pid]
             particle_type = input_conf.atomtypeparams[atom_type]['particletype']
@@ -234,13 +240,14 @@ def genParticleList(input_conf, gro_file, use_velocity=False, use_charge=False, 
                    espressopp.Real3D(gro_file.atoms[pid+1].position)]
             if use_mass:
                 tmp.append(input_conf.masses[pid])
-            if use_velocity:
-                tmp.append(espressopp.Real3D(
-                    input_conf.vx[pid],
-                    input_conf.vy[pid],
-                    input_conf.vz[pid]))
             if use_charge:
                 tmp.append(input_conf.charges[pid])
+            if temperature:
+                tmp.append(espressopp.Real3D(
+                    vx[at_id],
+                    vy[at_id],
+                    vz[at_id]
+                ))
             if particle_type == 'V':
                 tmp.append(0)  # adrat
                 if tmptuple:
@@ -249,6 +256,7 @@ def genParticleList(input_conf, gro_file, use_velocity=False, use_charge=False, 
             else:
                 tmp.append(1)  # adrat
                 tmptuple.append(pid+1)
+                at_id += 1
             particle_list.append(Particle(*tmp))
         # Set Adress tuples
         if tmptuple:
@@ -261,13 +269,14 @@ def genParticleList(input_conf, gro_file, use_velocity=False, use_charge=False, 
                    espressopp.Real3D(gro_file.atoms[pid+1].position)]
             if use_mass:
                 tmp.append(input_conf.masses[pid])
-            if use_velocity:
-                tmp.append(espressopp.Real3D(
-                    input_conf.vx[pid],
-                    input_conf.vy[pid],
-                    input_conf.vz[pid]))
             if use_charge:
                 tmp.append(input_conf.charges[pid])
+            if temperature:
+                tmp.append(espressopp.Real3D(
+                    vx[pid],
+                    vy[pid],
+                    vz[pid]
+                ))
             particle_list.append(Particle(*tmp))
         return props, particle_list
 

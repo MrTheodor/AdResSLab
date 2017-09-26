@@ -98,10 +98,12 @@ def main():  # NOQA
     # Setup system
     system = espressopp.System()
     system.rng = espressopp.esutil.RNG(rng_seed)
+    # Temperature in kb units
+    temperature = args.temperature * kb
 
     # Generate particle lists.
     part_prop, all_particles, adress_tuple = tools.genParticleList(
-        input_conf, input_gro_conf, adress=True, use_charge=True)
+        input_conf, input_gro_conf, adress=True, use_charge=True, temperature=temperature)
     print('Reads {} particles with properties {}'.format(len(all_particles), part_prop))
 
     if input_conf.charges:
@@ -200,7 +202,6 @@ def main():  # NOQA
     print('Number of interactions: {}'.format(system.getNumberOfInteractions()))
 
     # Define the thermostat
-    temperature = args.temperature * kb
     print('Temperature: {} ({}), gamma: {}'.format(args.temperature, temperature, args.thermostat_gamma))
     print('Thermostat: {}'.format(args.thermostat))
     if args.thermostat == 'lv':
