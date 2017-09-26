@@ -290,7 +290,7 @@ def main():  # NOQA
         adr_hy_idx = int((adr_centre[0] + args.adress_ex + args.adress_hy) / xdensity_dr)  # end of hy region
         # Set zero TH force for step0
         tf_new = '{}_{}_th_s{}.xvg'.format(args.output_prefix, rng_seed, 0)
-        zero_th = numpy.zeros((3, x_r.shape[0]))
+        zero_th = numpy.zeros((x_r.shape[0], 3))
         zero_th[:, 0] = x_r
         numpy.savetxt(tf_new, zero_th)
         tools_adress.set_single_th_force(thdforce, input_conf, tf_new)
