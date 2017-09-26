@@ -268,7 +268,7 @@ def main():  # NOQA
     espressopp.tools.AdressDecomp(system, integrator)
 
     # Let's compute density along X-axis
-    xdensity_dr = 0.01
+    xdensity_dr = 0.05
     xdensity_bins = int(box[0]/xdensity_dr)
     compute_density_profile = args.compute_density_profile or args.calculate_tf
     # Only atomistic particles
