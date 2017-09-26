@@ -284,7 +284,8 @@ def main():  # NOQA
         # Iterate over max_steps
         x_r = numpy.arange(0, box[0], xdensity_dr)
         adr_centre_idx = int(adr_centre[0]/xdensity_dr)
-        adr_ex_idx = int(args.adress_ex/xdensity_dr)
+        adr_ex_idx = int((adr_centre[0]+args.adress_ex)/xdensity_dr)
+        adr_hy_idx = int((adr_centre[0] + args.adress_ex + args.adress_hy) / xdensity_dr)
         for _s in range(args.tf_max_steps):
             # Main integrator loop.
             for k in range(k_steps):
@@ -300,7 +301,8 @@ def main():  # NOQA
 
             # For TF we need only part of the density profile.
             half_xdensity = xdensity[adr_centre_idx:]
-            xdensity[:adr_centre_idx] = half_xdensity[0]
+            xdensity[:adr_centre_idx] = 1.0
+            xdensity[adr_hy_idx:] = 1.0
             rho = numpy.zeros(xdensity.shape[0])
             rho[adr_centre_idx:] = half_xdensity * args.tf_prefactor
             rho_s = savgol_filter(rho, 21, 5, mode='nearest')  # Make it smooth
