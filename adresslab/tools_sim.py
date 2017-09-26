@@ -218,11 +218,8 @@ def genParticleList(input_conf, gro_file, use_charge=False, adress=False, temper
     vx = vy = vz = None
     if temperature:
         props.append('v')
-        at_masses = len([
-            m for i, m in enumerate(input_conf.masses)
-            if input_conf.atomtypeparams[input_conf.types[i]]['particletype'] == 'A'])
-        vx, vy, vz = espressopp.tools.velocities(temperature, len(at_masses), at_masses)
-
+        vx, vy, vz = espressopp.tools.velocities.gaussian(temperature, len(input_conf.masses), input_conf.masses)
+    print(len(vx))
     Particle = collections.namedtuple('Particle', props)
     particle_list = []
     num_particles = len(input_conf.types)
