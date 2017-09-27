@@ -376,7 +376,7 @@ def main():  # NOQA
         if dump_conf and args.trj_collect > 0:
             ext_dump = espressopp.integrator.ExtAnalyze(dump_conf, args.trj_collect)
             integrator.addExtension(ext_dump)
-            print('Collect trajectory every {} in {}'.format(trj_filename, args.trj_collect))
+            print('Collect trajectory every {} in {}'.format(args.trj_collect, trj_filename))
 
         # Main integrator loop.
         for k in range(k_steps):
