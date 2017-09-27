@@ -316,6 +316,7 @@ def main():  # NOQA
             # Main integrator loop.
             xdensity = numpy.array(xdensity_comp.compute(xdensity_bins))
             print('Step {}, run for {} steps'.format(_s, k_steps*args.int_step))
+            integrator.step = 0
             for k in range(k_steps):
                 integrator.run(args.int_step)
                 system_analysis.info()
