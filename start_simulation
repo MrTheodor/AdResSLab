@@ -286,17 +286,19 @@ def main():  # NOQA
 
     if args.calculate_tf:
         x_r = numpy.arange(0, box[0], xdensity_dr)
-        adr_ex_idx = int((adr_centre[0] + args.adress_ex)/xdensity_dr)  # end of ex region
-        adr_hy_idx = int((adr_centre[0] + args.adress_ex + args.adress_hy) / xdensity_dr)  # end of hy region
+        adr_centre_idx = int(adr_centre[0]/xdensity_dr)
+        # Indexes with respect to adr_centre_idx (0)
+        adr_ex_idx = int((args.adress_ex)/xdensity_dr)  # end of ex region
+        adr_hy_idx = int((args.adress_ex + args.adress_hy) / xdensity_dr)  # end of hy region
         # Set zero TH force for step0
-        tf_new = '{}_{}_th_s{}.xvg'.format(args.output_prefix, rng_seed, '_init')
-        zero_th = numpy.zeros((x_r.shape[0], 3))
-        zero_th[:, 0] = x_r
+        tf_new = '{}_{}_th_s{}.xvg'.format(args.output_prefix, rng_seed, 0)
+        zero_th = numpy.zeros((x_r[adr_centre_idx:].shape[0], 3))
+        zero_th[:, 0] = x_r[:adr_centre_idx]
         numpy.savetxt(tf_new, zero_th)
         tools_adress.set_single_th_force(thdforce, input_conf, tf_new)
         last_th_force = zero_th[:, 2]
 
-        for _s in range(args.tf_max_steps):
+        for _s in range(1, args.tf_max_steps+1):
             # Main integrator loop.
             xdensity = numpy.array(xdensity_comp.compute(xdensity_bins))
             for k in range(k_steps):
@@ -312,16 +314,21 @@ def main():  # NOQA
             numpy.savetxt(xdensity_file, numpy.column_stack((x_r, xdensity)))
 
             # For TF we need only part of the density profile.
-            rho = numpy.ones(xdensity.shape[0]) * average_density  # Set everywhere average density except hy region
-            rho[adr_ex_idx-1:adr_hy_idx+1] = xdensity[adr_ex_idx-1:adr_hy_idx+1]
+            rho = numpy.ones(xdensity[adr_centre_idx:].shape[0]) * average_density  # Only half from ADR centre
+            rho[adr_ex_idx-1:adr_hy_idx+1] = xdensity[adr_centre_idx+adr_ex_idx-1:adr_centre_idx+adr_hy_idx+1]
             rho_s = savgol_filter(rho, 21, 5, mode='nearest')  # Make it smooth
             drho_s = savgol_filter(rho_s, 21, 5, deriv=1, mode='nearest')   # Get the force
+
+            # Substract the force from the previouse step (with prefactor)
             new_th_force = last_th_force - args.tf_prefactor*drho_s
+
             # Save the new table
             tf_new = '{}_{}_th_s{}.xvg'.format(args.output_prefix, rng_seed, _s)
-            numpy.savetxt(tf_new, numpy.column_stack((x_r, rho, new_th_force)))
-            last_th_force = new_th_force
+            numpy.savetxt(tf_new, numpy.column_stack((x_r[:adr_centre_idx], rho, new_th_force)))
             print('Saved new tf force to: {}'.format(tf_new))
+
+            # Save force from current step as last step and set new TD force
+            last_th_force = new_th_force
             tools_adress.set_single_th_force(thdforce, input_conf, tf_new)
     else:  # Standard simulation
         # Do not store trajectory when requested calculate TF.
