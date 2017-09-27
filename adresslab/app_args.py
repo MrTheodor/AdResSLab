@@ -113,6 +113,6 @@ def _args_md():
     compute_tf.add_argument('--tf_prefactor', help='Prefactor', type=float, default=1.0)
     compute_tf.add_argument('--tf_max_steps', default=100, type=int)
     compute_tf.add_argument('--tf_initial_table', default=None)
-    compute_tf.add_argument('--tf_initial_step', default=0, type=int)
+    compute_tf.add_argument('--tf_initial_step', default=1, type=int)
 
     return parser

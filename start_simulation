@@ -255,6 +255,12 @@ def main():  # NOQA
                 thdforce.addForce(itype=3, filename=table_name, type=type_name2type_id[type_name])
                 print('Set TF force for type: {} table: {}'.format(type_name, table_name))
 
+    if args.tf_initial_table:
+        use_thforce = True
+        single_thforce = True
+        thdforce = espressopp.integrator.TDforce(system, verletlist)
+        tools_adress.set_single_th_force(thdforce, input_conf, args.tf_initial_table)
+
     # add AdResS
     adress = espressopp.integrator.Adress(system, verletlist, ftpl)
     integrator.addExtension(adress)
