@@ -229,10 +229,6 @@ def main():  # NOQA
 
     print('Number of particles: {}'.format(len(all_particles)))
 
-    # add AdResS
-    adress = espressopp.integrator.Adress(system, verletlist, ftpl)
-    integrator.addExtension(adress)
-    integrator.addExtension(thermostat)
 
     # Thermodynamic force
     use_thforce = False
@@ -258,6 +254,11 @@ def main():  # NOQA
                     raise RuntimeError('Type name {} not found'.format(type_name))
                 thdforce.addForce(itype=3, filename=table_name, type=type_name2type_id[type_name])
                 print('Set TF force for type: {} table: {}'.format(type_name, table_name))
+
+    # add AdResS
+    adress = espressopp.integrator.Adress(system, verletlist, ftpl)
+    integrator.addExtension(adress)
+    integrator.addExtension(thermostat)
 
     if args.cap_force:
         print('Define maximum cap-force in the system (max: {})'.format(args.cap_force))
