@@ -23,4 +23,5 @@ def set_single_th_force(thdforce, input_conf, tf_new):
     """Sets single thermodynamic force for all types of CG particles."""
     for type_id, type_data in input_conf.atomtypeparams.items():
         if type_data['particletype'] == 'V':
+            print('Thermodynamic force from {} on type {}'.format(tf_new, type_id))
             thdforce.addForce(itype=3, filename=tf_new, type=type_id)
