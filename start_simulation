@@ -333,7 +333,7 @@ def main():  # NOQA
             tf_new = '{}_{}_th_s{}.xvg'.format(args.output_prefix, rng_seed, _s)
             tf_new_raw = '{}_{}_th_s{}_raw.xvg'.format(args.output_prefix, rng_seed, _s)
             numpy.savetxt(tf_new, numpy.column_stack((x_r[:adr_centre_idx+1], rho_s, new_th_force)))
-            numpy.savetxt(tf_new_raw, numpy.column_stack((x_r[:adr_centre_idx], rho, rho_s, new_th_force, drho_s)))
+            numpy.savetxt(tf_new_raw, numpy.column_stack((x_r[:adr_centre_idx+1], rho, rho_s, new_th_force, drho_s)))
             print('Saved new tf force to: {}'.format(tf_new))
 
             # Save force from current step as last step and set new TD force
