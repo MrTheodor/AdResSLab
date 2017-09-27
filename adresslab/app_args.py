@@ -112,5 +112,7 @@ def _args_md():
         help='If set to true then thermodynamic force will be calculated', type=ast.literal_eval)
     compute_tf.add_argument('--tf_prefactor', help='Prefactor', type=float, default=1.0)
     compute_tf.add_argument('--tf_max_steps', default=100, type=int)
+    compute_tf.add_argument('--tf_initial_table', default=None)
+    compute_tf.add_argument('--tf_initial_step', default=0, type=int)
 
     return parser

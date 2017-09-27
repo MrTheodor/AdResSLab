@@ -294,15 +294,19 @@ def main():  # NOQA
         # Indexes with respect to adr_centre_idx (0)
         adr_ex_idx = int((args.adress_ex)/xdensity_dr)  # end of ex region
         adr_hy_idx = int((args.adress_ex + args.adress_hy) / xdensity_dr)  # end of hy region
-        # Set zero TH force for step0
-        tf_new = '{}_{}_th_s{}.xvg'.format(args.output_prefix, rng_seed, 0)
-        zero_th = numpy.zeros((x_r[adr_centre_idx-1:].shape[0], 3))
-        zero_th[:, 0] = x_r[:adr_centre_idx+1]
-        numpy.savetxt(tf_new, zero_th)
-        tools_adress.set_single_th_force(thdforce, input_conf, tf_new)
-        last_th_force = zero_th[:, 2]
+        # Read initial table from the file
+        if args.tf_initial_table:
+            zero_th = numpy.loadtxt(args.tf_initial_table)
+            last_th_force = zero_th[:, 2]
+        else:
+            tf_new = '{}_{}_th_s{}.xvg'.format(args.output_prefix, rng_seed, 0)
+            zero_th = numpy.zeros((x_r[adr_centre_idx-1:].shape[0], 3))
+            zero_th[:, 0] = x_r[:adr_centre_idx+1]
+            numpy.savetxt(tf_new, zero_th)
+            tools_adress.set_single_th_force(thdforce, input_conf, tf_new)
+            last_th_force = zero_th[:, 2]
 
-        for _s in range(1, args.tf_max_steps+1):
+        for _s in range(args.tf_initial_step, args.tf_max_steps+1):
             # Main integrator loop.
             xdensity = numpy.array(xdensity_comp.compute(xdensity_bins))
             print('Step {}, run for {} steps'.format(_s, k_steps*args.int_step))
