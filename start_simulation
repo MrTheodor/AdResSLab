@@ -379,6 +379,7 @@ def main():  # NOQA
             print('Collect trajectory every {} in {}'.format(args.trj_collect, trj_filename))
 
         # Main integrator loop.
+        print('Run simulation for {} steps'.format(k_steps*args.int_step))
         for k in range(k_steps):
             integrator.run(args.int_step)
             system_analysis.info()

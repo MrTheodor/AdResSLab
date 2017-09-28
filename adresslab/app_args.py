@@ -51,7 +51,7 @@ def _args_md():
 
     misc_group = parser.add_argument_group('Misc')
     misc_group.add_argument('--remove_com', type=ast.literal_eval, help='Removes total velocity of the system', default=False)
-    misc_group.add_argument('--cap_force', type=float, help='Define maximum cap-force in the system')
+    misc_group.add_argument('--cap_force', type=float, help='Define maximum cap-force in the system', default=1e6)
     misc_group.add_argument('--compute_density_profile', type=ast.literal_eval, default=False,
                             help='Should compute density profile (x-direction)')
 
