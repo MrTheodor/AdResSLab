@@ -289,112 +289,50 @@ def main():  # NOQA
         xdensity_comp = espressopp.analysis.XDensity(system)
         xdensity = numpy.array(xdensity_comp.compute(xdensity_bins))
 
-    if args.calculate_tf and not single_thforce:
-        # TODO(jakub): Generalized it.
-        raise RuntimeError('Calculation of TD-force only for a single table.')
+    # Do not store trajectory when requested calculate TF.
+    trj_filename = '{}_{}_traj_at'.format(args.output_prefix, rng_seed)
+    dump_conf = None
+    if args.output_format == 'gro':
+        trj_filename = '{}.gro'.format(trj_filename)
+        dump_conf = espressopp.io.DumpGROAdress(
+            system,
+            ftpl,
+            integrator,
+            filename='{}.gro'.format(trj_filename),
+            unfolded=True)
+    elif args.output_format == 'xtc':
+        trj_filename = '{}.gro'.format(trj_filename)
+        dump_conf = espressopp.io.DumpXTCAdress(
+            system,
+            ftpl,
+            integrator,
+            unfolded=True,
+            append=True,
+            filename='{}.xtc'.format(trj_filename))
+    elif args.output_format:
+        raise RuntimeError('Traj dump {} not supported'.format(args.output_format))
 
-    if args.calculate_tf:
-        savgol_filter_window = 21
-        x_r = numpy.arange(0, box[0], xdensity_dr)
-        adr_centre_idx = int(adr_centre[0]/xdensity_dr)
-        # Indexes with respect to adr_centre_idx (0)
-        adr_ex_idx = int((args.adress_ex)/xdensity_dr)  # end of ex region
-        adr_hy_idx = int((args.adress_ex + args.adress_hy) / xdensity_dr)  # end of hy region
-        # Read initial table from the file
-        if args.tf_initial_table:
-            zero_th = numpy.loadtxt(args.tf_initial_table)
-            last_th_force = zero_th[:, 2]
-        else:
-            tf_new = '{}_{}_th_s{}.xvg'.format(args.output_prefix, rng_seed, 0)
-            zero_th = numpy.zeros((x_r[adr_centre_idx-1:].shape[0], 3))
-            zero_th[:, 0] = x_r[:adr_centre_idx+1]
-            numpy.savetxt(tf_new, zero_th)
-            tools_adress.set_single_th_force(thdforce, input_conf, tf_new)
-            last_th_force = zero_th[:, 2]
+    if dump_conf and args.trj_collect > 0:
+        ext_dump = espressopp.integrator.ExtAnalyze(dump_conf, args.trj_collect)
+        integrator.addExtension(ext_dump)
+        print('Collect trajectory every {} in {}'.format(args.trj_collect, trj_filename))
 
-        for _s in range(args.tf_initial_step, args.tf_max_steps+1):
-            # Main integrator loop.
-            xdensity = numpy.array(xdensity_comp.compute(xdensity_bins))
-            print('Step {}, run for {} steps'.format(_s, k_steps*args.int_step))
-            integrator.step = 0
-            for k in range(k_steps):
-                integrator.run(args.int_step)
-                system_analysis.info()
-                xdensity += numpy.array(xdensity_comp.compute(xdensity_bins))
-
-            xdensity = xdensity / (k_steps + 1)
-            xdensity *= average_density
-
-            xdensity_file = '{}_{}_xdensity_s{}.csv'.format(args.output_prefix, rng_seed, _s)
-            print('Saved x-density: {}'.format(xdensity_file))
-            numpy.savetxt(xdensity_file, numpy.column_stack((x_r, xdensity)))
-
-            # For TF we need only part of the density profile.
-            rho = xdensity[adr_centre_idx-1:]
-            #rho[adr_ex_idx-1:adr_hy_idx+1] = xdensity[adr_centre_idx+adr_ex_idx-1:adr_centre_idx+adr_hy_idx+1]
-            rho_s = savgol_filter(rho, savgol_filter_window, 5, mode='nearest')  # Make it smooth
-            drho_s = savgol_filter(rho_s, savgol_filter_window, 5, deriv=1, mode='nearest')   # Get the force
-            drho_s[:adr_ex_idx-1] = 0.0
-            drho_s[adr_hy_idx+1:] = 0.0
-
-            # Substract the force from the previouse step (with prefactor)
-            new_th_force = last_th_force - args.tf_prefactor*drho_s
-
-            # Save the new table
-            tf_new = '{}_{}_th_s{}.xvg'.format(args.output_prefix, rng_seed, _s)
-            tf_new_raw = '{}_{}_th_s{}_raw.xvg'.format(args.output_prefix, rng_seed, _s)
-            numpy.savetxt(tf_new, numpy.column_stack((x_r[:adr_centre_idx+1], rho_s, new_th_force)))
-            numpy.savetxt(tf_new_raw, numpy.column_stack((x_r[:adr_centre_idx+1], rho, rho_s, new_th_force, drho_s)))
-            print('Saved new tf force to: {}'.format(tf_new))
-
-            # Save force from current step as last step and set new TD force
-            last_th_force = new_th_force
-            tools_adress.set_single_th_force(thdforce, input_conf, tf_new)
-    else:  # Standard simulation
-        # Do not store trajectory when requested calculate TF.
-        trj_filename = '{}_{}_traj_at'.format(args.output_prefix, rng_seed)
-        dump_conf = None
-        if args.output_format == 'gro':
-            trj_filename = '{}.gro'.format(trj_filename)
-            dump_conf = espressopp.io.DumpGROAdress(
-                system,
-                ftpl,
-                integrator,
-                filename='{}.gro'.format(trj_filename),
-                unfolded=True)
-        elif args.output_format == 'xtc':
-            trj_filename = '{}.gro'.format(trj_filename)
-            dump_conf = espressopp.io.DumpXTCAdress(
-                system,
-                ftpl,
-                integrator,
-                unfolded=True,
-                append=True,
-                filename='{}.xtc'.format(trj_filename))
-        elif args.output_format:
-            raise RuntimeError('Traj dump {} not supported'.format(args.output_format))
-
-        if dump_conf and args.trj_collect > 0:
-            ext_dump = espressopp.integrator.ExtAnalyze(dump_conf, args.trj_collect)
-            integrator.addExtension(ext_dump)
-            print('Collect trajectory every {} in {}'.format(args.trj_collect, trj_filename))
-
-        # Main integrator loop.
-        print('Run simulation for {} steps'.format(k_steps*args.int_step))
-        for k in range(k_steps):
-            integrator.run(args.int_step)
-            system_analysis.info()
-            if compute_density_profile:
-                xdensity += numpy.array(xdensity_comp.compute(xdensity_bins))
-
-        # Calculate average of the density profile.
+    # Main integrator loop.
+    print('Run simulation for {} steps'.format(k_steps*args.int_step))
+    for k in range(k_steps):
+        integrator.run(args.int_step)
+        system_analysis.info()
         if compute_density_profile:
-            xdensity = xdensity / (k_steps+1)
-            xdensity = numpy.column_stack((numpy.arange(0, box[0], xdensity_dr), xdensity*average_density))
+            xdensity += numpy.array(xdensity_comp.compute(xdensity_bins))
 
-            xdensity_file = '{}_{}_xdensity.csv'.format(args.output_prefix, rng_seed)
-            numpy.savetxt(xdensity_file, xdensity)
-            print('Saved x-density: {}'.format(xdensity_file))
+    # Calculate average of the density profile.
+    if compute_density_profile:
+        xdensity = xdensity / (k_steps+1)
+        xdensity = numpy.column_stack((numpy.arange(0, box[0], xdensity_dr), xdensity*average_density))
+
+        xdensity_file = '{}_{}_xdensity.csv'.format(args.output_prefix, rng_seed)
+        numpy.savetxt(xdensity_file, xdensity)
+        print('Saved x-density: {}'.format(xdensity_file))
 
     print('Finished!')
     print('Total time: {}'.format(time.time() - time0))
