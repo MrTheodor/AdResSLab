@@ -1038,7 +1038,7 @@ def setLennardJonesInteractions(system, defaults, atomtypeparams, verletlist, cu
 
 
 def setCoulombInteractions(system, verletlist, rc, atomtypeparams,
-                           epsilon1, epsilon2, kappa, ftpl=None):
+                           epsilon1, epsilon2, kappa, ftpl=None, interaction=None):
     pref = 138.935485  # we want gromacs units, so this is 1/(4 pi eps_0) ins units of kJ mol^-1 e^-2
 
     at_type_pairs = sorted({
@@ -1059,10 +1059,11 @@ def setCoulombInteractions(system, verletlist, rc, atomtypeparams,
     if at_type_pairs or cg_type_pairs:
         pot = espressopp.interaction.ReactionFieldGeneralized(
             prefactor=pref, kappa=kappa, epsilon1=epsilon1, epsilon2=epsilon2, cutoff=rc)
-        if ftpl:
-            interaction = espressopp.interaction.VerletListAdressReactionFieldGeneralized(verletlist, ftpl)
-        else:
-            interaction = espressopp.interaction.VerletListReactionFieldGeneralized(verletlist)
+        if interaction is None:
+            if ftpl:
+                interaction = espressopp.interaction.VerletListAdressReactionFieldGeneralized(verletlist, ftpl)
+            else:
+                interaction = espressopp.interaction.VerletListReactionFieldGeneralized(verletlist)
 
         if ftpl:
             setPotential_fn = interaction.setPotentialAT

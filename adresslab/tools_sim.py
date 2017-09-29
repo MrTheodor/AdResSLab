@@ -152,11 +152,12 @@ def setLennardJonesInteractions(input_conf, verletlist, cutoff, nonbonded_params
     return interaction
 
 
-def setTabulatedInteractions(atomtypeparams, cutoff, interaction, table_groups=[]):
+def setTabulatedInteractions(atomtypeparams, vl, cutoff, interaction=None, table_groups=[]):
     """Sets tabulated potential for types that has particletype set to 'V'.
 
     Args:
         atomtypeparams: The GROMACS input topology object.
+        vl: VerletList.
         interaction: The non-bonded interaction.
         cutoff: The cut-off for tabulated potential.
         table_groups: The list of atom types that should use tabulated potential (ignored here).
@@ -165,6 +166,9 @@ def setTabulatedInteractions(atomtypeparams, cutoff, interaction, table_groups=[
         The interaction.
     """
     spline_type = 1  # linear interpolation
+
+    if interaction is None:
+        interaction = espressopp.interaction.VerletListLennardJones(vl)
 
     type_pairs = set()
     for type_1, v1 in atomtypeparams.iteritems():
@@ -188,7 +192,7 @@ def setTabulatedInteractions(atomtypeparams, cutoff, interaction, table_groups=[
         orig_table_name = 'table_{}_{}.xvg'.format(name_1, name_2)
         if not os.path.exists(table_name):
             espressopp.tools.convert.gromacs.convertTable(orig_table_name, table_name)
-        interaction.setPotentialCG(
+        interaction.setPotential(
             type1=type_1,
             type2=type_2,
             potential=espressopp.interaction.Tabulated(

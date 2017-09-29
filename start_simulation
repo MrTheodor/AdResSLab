@@ -174,29 +174,34 @@ def main():  # NOQA
     print('Spherical region: {}'.format(args.adress_use_sphere))
 
     # Define interactions.
-    verletlist = espressopp.VerletListAdress(system, cutoff=max_cutoff, adrcut=max_cutoff,
-                                             dEx=args.adress_ex, dHy=args.adress_hy,
-                                             adrCenter=adr_centre,
-                                             sphereAdr=args.adress_use_sphere)
-    verletlist.exclude(input_conf.exclusions)
+    verletlistAT = espressopp.VerletListHybridAT(system, max_cutoff, input_conf.exclusions)
+    verletlistCG = espressopp.VerletListHybridCG(system, max_cutoff, input_conf.exclusions)
 
+    at_lj_interaction = espressopp.interaction.VerletListHybridLennardJones(verletlistAT, False)
     lj_interaction = tools.setLennardJonesInteractions(
-        input_conf, verletlist, max_cutoff, input_conf.nonbond_params, ftpl=ftpl)
+        input_conf, verletlistAT, max_cutoff, input_conf.nonbond_params,
+        interaction=at_lj_interaction)
+
+    at_el_interaction = espressopp.interaction.VerletListHybridReactionFieldGeneralized(
+        verletlistAT, False)
+
     coulomb_interaction = gromacs_topology.setCoulombInteractions(system,
-                                                                  verletlist,
+                                                                  verletlistAT,
                                                                   max_cutoff,
                                                                   input_conf.atomtypeparams,
                                                                   epsilon1=args.coulomb_epsilon1,
                                                                   epsilon2=args.coulomb_epsilon2,
                                                                   kappa=args.coulomb_kappa,
-                                                                  ftpl=ftpl)
-
-    tools.setTabulatedInteractions(input_conf.atomtypeparams, max_cutoff, lj_interaction)
+                                                                  interaction=at_el_interaction)
+    cg_tab_interaction = espressopp.interaction.VerletListHybridTabulated(verletlistCG, True)
+    tools.setTabulatedInteractions(input_conf.atomtypeparams, verletlistCG, max_cutoff,
+                                   interaction=cg_tab_interaction)
     tools.setBondedInteractions(system, input_conf, ftpl)
     tools.setAngleInteractions(system, input_conf, ftpl)
     tools.setDihedralInteractions(system, input_conf, ftpl)
 
     system.addInteraction(lj_interaction, 'lj')
+    system.addInteraction(cg_tab_interaction,  'lj-tab')
     system.addInteraction(coulomb_interaction, 'coulomb')
 
     print('Number of interactions: {}'.format(system.getNumberOfInteractions()))
