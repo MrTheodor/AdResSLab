@@ -406,7 +406,23 @@ def main():  # NOQA
     print('Finished!')
     print('Total time: {}'.format(time.time() - time0))
     print('VV time: {}'.format(time_vv))
-    espressopp.tools.analyse.final_info(system, integrator, verletlist, time0, time.time())
+    vv_timers = integrator.getTimers()
+    global_timers = {}
+    for cpu_timer in vv_timers:
+        # First consolidate
+        for k, v in cpu_timer:
+            if k not in global_timers:
+                global_timers[k] = 0.0
+            global_timers[k] += v
+    for k, v in global_timers.items():
+        global_timers[k] /= len(vv_timers)
+        print('VV {}: {:.2f}'.format(k, global_timers[k]))
+    print('Total # of AT neighbors = %d' % verletlistAT.totalSize())
+    print('Neighbor AT list builds = %d' % verletlistAT.builds)
+    print('Total # of CG neighbors = %d' % verletlistCG.totalSize())
+    print('Neighbor CG list builds = %d' % verletlistCG.builds)
+    print('Integration steps = %d' % integrator.step)
+    print('Total time: {}'.format(time.time() - time0))
 
 
 if __name__ == '__main__':
