@@ -1,0 +1,303 @@
+#!/usr/bin/env python2
+"""
+Copyright (C) 2017
+    Jakub Krajniak (jkrajniak at gmail.com)
+
+This file is part of AdResSLab.
+
+AdResSLab is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+AdResSLab is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+"""
+
+import espressopp  # NOQA
+import numpy
+from mpi4py import MPI
+import random
+import os
+import time
+from scipy.signal import savgol_filter
+
+from adresslab import files_io, tools_adress
+from adresslab import tools_sim as tools
+from adresslab import gromacs_topology
+
+
+from adresslab.app_args import _args_md as _args
+
+# GROMACS units, kJ/mol K
+kb = 0.0083144621
+
+# Storage options
+
+# Mostly you do not need to modify lines below.
+def main():  # NOQA
+    time0 = time.time()
+    args = _args().parse_args()
+
+    max_cutoff = args.cutoff
+
+    print('Welcome in AdResSLab!')
+
+    generate_exclusions = args.exclusion_list is None or not os.path.exists(args.exclusion_list)
+
+    input_conf = gromacs_topology.read(args.top, doRegularExcl=generate_exclusions)
+    input_gro_conf = files_io.GROFile(args.conf)
+    input_gro_conf.read()
+
+    if not generate_exclusions:
+        exclusion_file = open(args.exclusion_list, 'r')
+        exclusions = [map(int, x.split()) for x in exclusion_file.readlines()]
+        print('Read exclusion list from {} (total: {})'.format(args.exclusion_list, len(exclusions)))
+        input_conf = input_conf._replace(exclusions=exclusions)
+    else:
+        exclusion_list_file = 'exclusion_{}.list'.format(args.top.split('.')[0])
+        with open(exclusion_list_file, 'w') as fel:
+            for p in input_conf.exclusions:
+                fel.write('{} {}\n'.format(*p))
+        print('Save exclusion list: {} ({})'.format(exclusion_list_file, len(input_conf.exclusions)))
+
+    box = input_gro_conf.box
+    print('Setting up simulation...')
+
+    # Tune simulation parameter according to arguments
+    integrator_step = args.int_step
+    k_steps = int(args.run / integrator_step)
+
+    if args.skin:
+        skin = args.skin
+    else:
+        skin = 0.16
+
+    rng_seed = args.rng_seed
+    if args.rng_seed == -1:
+        rng_seed = random.randint(1, 10000)
+        args.rng_seed = rng_seed
+
+    # Initialize RNG
+    random.seed(rng_seed)
+
+    # Save the params to the the file.
+    _args().save_to_file('{}_{}_params.out'.format(args.output_prefix, rng_seed), args)
+
+    print('Skin: {}'.format(skin))
+    print('RNG Seed: {}'.format(rng_seed))
+    print('Time step: {}'.format(args.dt))
+    print('Cutoff: {}'.format(max_cutoff))
+    print('Boltzmann constant = {}'.format(kb))
+
+    # Setup system
+    system = espressopp.System()
+    system.rng = espressopp.esutil.RNG(rng_seed)
+    # Temperature in kb units
+    temperature = args.temperature * kb
+
+    # Generate particle lists.
+    part_prop, all_particles, adress_tuple = tools.genParticleList(
+        input_conf, input_gro_conf, adress=True, use_charge=True, temperature=temperature)
+    print('Reads {} particles with properties {}'.format(len(all_particles), part_prop))
+
+    if input_conf.charges:
+        print('Total charge: {}'.format(sum(input_conf.charges)))
+
+    print('Running with box {}'.format(box))
+    system.bc = espressopp.bc.OrthorhombicBC(system.rng, box)
+    system.skin = skin
+
+    if args.node_grid:
+        nodeGrid = map(int, args.node_grid.split(','))
+    else:
+        nodeGrid = espressopp.tools.decomp.nodeGrid(MPI.COMM_WORLD.size)
+    print('Number of nodes {}, node-grid: {}'.format(
+        MPI.COMM_WORLD.size, nodeGrid))
+    if args.cell_grid:
+        cellGrid = map(int, args.cell_grid.split(','))
+    else:
+        cellGrid = espressopp.tools.decomp.cellGrid(box, nodeGrid, max_cutoff, skin)
+    print('Cell grid: {}'.format(cellGrid))
+
+    system.storage = espressopp.storage.DomainDecomposition(system, nodeGrid, cellGrid)
+
+    integrator = espressopp.integrator.VelocityVerlet(system)
+    integrator.dt = args.dt
+    system.integrator = integrator
+
+    # Adds particles here
+    # This is a pure atomistic simulator, remove CG particles and renumber AT particles
+    old2new_ids = {}
+    at_id = 1
+    tmpp = []
+    new_plist = []
+    part_prop = list(part_prop)
+    index_adrat = part_prop.index('adrat')
+    del part_prop[index_adrat]
+    index_id = part_prop.index('id')
+    for p in all_particles:
+        if p.adrat == 1:  # atomistic particle
+            old_id = p.id
+            p = list(p)
+            p[index_id] = at_id
+            del p[index_adrat]
+            new_plist.append(p)
+            old2new_ids[old_id] = at_id
+            tmpp.append(tuple(p))
+            at_id += 1
+    print('Number of particles: {}'.format(len(new_plist)))
+    system.storage.addParticles(new_plist, *part_prop)
+    system.storage.decompose()
+
+    for k in input_conf.bondtypes:
+        input_conf.bondtypes[k] = tools.renumber_list(input_conf.bondtypes[k], old2new_ids)
+    for k in input_conf.angletypes:
+        input_conf.angletypes[k] = tools.renumber_list(input_conf.angletypes[k], old2new_ids)
+    for k in input_conf.dihedraltypes:
+        input_conf.dihedraltypes[k] = tools.renumber_list(input_conf.dihedraltypes[k], old2new_ids)
+
+    exclusions = tools.renumber_list(input_conf.exclusions, old2new_ids)
+
+    print('Prepared:')
+    print('Bonds: {}'.format(sum(len(x) for x in input_conf.bondtypes.values())))
+    print('Angles: {}'.format(sum(len(x) for x in input_conf.angletypes.values())))
+    print('Dihedrals: {}'.format(sum(len(x) for x in input_conf.dihedraltypes.values())))
+    print('Pairs: {}'.format(sum(len(x) for x in input_conf.pairtypes.values())))
+
+    # Define interactions.
+    verletlist = espressopp.VerletList(system, cutoff=max_cutoff, exclusionlist=exclusions)
+
+    ftpl = None  # AdResS tuple, set to None
+
+    lj_interaction = tools.setLennardJonesInteractions(
+        input_conf, verletlist, max_cutoff, input_conf.nonbond_params, ftpl=ftpl)
+    coulomb_interaction = gromacs_topology.setCoulombInteractions(system,
+                                                                  verletlist,
+                                                                  max_cutoff,
+                                                                  input_conf.atomtypeparams,
+                                                                  epsilon1=args.coulomb_epsilon1,
+                                                                  epsilon2=args.coulomb_epsilon2,
+                                                                  kappa=args.coulomb_kappa,
+                                                                  ftpl=ftpl)
+
+    tools.setBondedInteractions(system, input_conf, ftpl)
+    tools.setAngleInteractions(system, input_conf, ftpl)
+    tools.setDihedralInteractions(system, input_conf, ftpl)
+
+    system.addInteraction(lj_interaction, 'lj')
+    system.addInteraction(coulomb_interaction, 'coulomb')
+
+    print('Number of interactions: {}'.format(system.getNumberOfInteractions()))
+
+    # Define the thermostat
+    print('Temperature: {} ({}), gamma: {}'.format(args.temperature, temperature, args.thermostat_gamma))
+    print('Thermostat: {}'.format(args.thermostat))
+    if args.thermostat == 'lv':
+        thermostat = espressopp.integrator.LangevinThermostat(system)
+        thermostat.temperature = temperature
+        thermostat.gamma = args.thermostat_gamma
+    elif args.thermostat == 'vr':
+        raise RuntimeError('Stochastic velocity rescale does not support AdResS, use Langevin.')
+        # thermostat = espressopp.integrator.StochasticVelocityRescaling(system)
+        # thermostat.temperature = temperature
+        # thermostat.coupling = args.thermostat_gamma
+
+    print("Added tuples, decomposing now...")
+
+    ext_analysis, system_analysis = tools.setSystemAnalysis(
+        system, integrator, args, args.energy_collect,
+        particle_types=[t for t, d in input_conf.atomtypeparams.items() if d['particletype'] == 'A'])
+
+    if args.remove_com > 0:
+        print('Removes total velocity of the system every {} steps'.format(args.remove_com))
+        total_velocity = espressopp.analysis.CMVelocity(system)
+        ext_remove_com = espressopp.integrator.ExtAnalyze(total_velocity, args.remove_com)
+        integrator.addExtension(ext_remove_com)
+
+    print('Number of particles: {}'.format(len(all_particles)))
+
+    integrator.addExtension(thermostat)
+
+    if args.cap_force:
+        print('Define maximum cap-force in the system (max: {})'.format(args.cap_force))
+        cap_force = espressopp.integrator.CapForce(system, args.cap_force)
+        integrator.addExtension(cap_force)
+
+    print('Decomposing...')
+    system.storage.decompose()
+
+    # Let's compute density along X-axis
+    xdensity_dr = 0.05
+    xdensity_bins = int(box[0]/xdensity_dr)
+    compute_density_profile = args.compute_density_profile
+
+    # Only atomistic particles
+    at_masses = [m for i, m in enumerate(input_conf.masses)
+                 if input_conf.atomtypeparams[input_conf.types[i]]['particletype'] == 'A']
+    average_density = sum(at_masses)/(box[0]*box[1]*box[2])
+    print('Average density: {}'.format(average_density))
+    if compute_density_profile:
+        xdensity_comp = espressopp.analysis.XDensity(system)
+        xdensity = numpy.array(xdensity_comp.compute(xdensity_bins))
+
+    trj_filename = '{}_{}_traj_at'.format(args.output_prefix, rng_seed)
+    dump_conf = None
+    if args.output_format == 'gro':
+        trj_filename = '{}.gro'.format(trj_filename)
+        dump_conf = espressopp.io.DumpGRO(
+            system,
+            integrator,
+            append=True,
+            filename='{}.gro'.format(trj_filename),
+            unfolded=True)
+    elif args.output_format == 'xtc':
+        trj_filename = '{}.gro'.format(trj_filename)
+        dump_conf = espressopp.io.DumpXTC(
+            system,
+            integrator,
+            unfolded=True,
+            append=True,
+            filename='{}.xtc'.format(trj_filename))
+    elif args.output_format:
+        raise RuntimeError('Traj dump {} not supported'.format(args.output_format))
+
+    if dump_conf and args.trj_collect > 0:
+        dump_conf.dump()
+        ext_dump = espressopp.integrator.ExtAnalyze(dump_conf, args.trj_collect)
+        integrator.addExtension(ext_dump)
+        print('Collect trajectory every {} in {}'.format(args.trj_collect, trj_filename))
+
+    # Main integrator loop.
+    time_vv = 0.0
+    print('Run simulation for {} steps'.format(k_steps*args.int_step))
+
+    for k in range(k_steps):
+        time_s = time.time()
+        integrator.run(args.int_step)
+        time_vv += (time.time() - time_s)
+        system_analysis.info()
+        if compute_density_profile:
+            xdensity += numpy.array(xdensity_comp.compute(xdensity_bins))
+
+    # Calculate average of the density profile.
+    if compute_density_profile:
+        xdensity = xdensity / (k_steps+1)
+        xdensity = numpy.column_stack((numpy.arange(0, box[0], xdensity_dr), xdensity*average_density))
+        xdensity_file = '{}_{}_xdensity.csv'.format(args.output_prefix, rng_seed)
+        numpy.savetxt(xdensity_file, xdensity)
+        print('Saved x-density: {}'.format(xdensity_file))
+
+    print('Finished!')
+    print('Total time: {}'.format(time.time() - time0))
+    print('VV time: {}'.format(time_vv))
+    espressopp.tools.analyse.final_info(system, integrator, verletlist, time0, time.time())
+
+
+if __name__ == '__main__':
+    main()
