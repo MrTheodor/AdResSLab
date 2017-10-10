@@ -1,4 +1,5 @@
-#include "/user/leuven/307/vsc30783/vsc_data/software/2015a/GROMACS/2016.3/share/gromacs/top/gromos53a6.ff/forcefield.itp"
+;#include "/user/leuven/307/vsc30783/vsc_data/software/2015a/GROMACS/2016.3/share/gromacs/top/gromos53a6.ff/forcefield.itp"
+#include "/home/teodor/.local/gromacs/share/gromacs/top/gromos53a6.ff/forcefield.itp"
 
 [ atomtypes ]
 ;name  mass        charge    ptype  C6             C12           ; sigma     epsilon

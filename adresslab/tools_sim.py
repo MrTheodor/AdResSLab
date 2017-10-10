@@ -425,3 +425,17 @@ def setDihedralInteractions(system, input_conf, ftpl):
                 did, '_cross' if cross_dih else ''))
             ret_list.update({(did, cross_dih): dihedralinteraction})
     return ret_list
+
+
+def renumber_list(input_list, old2new_ids):
+    """Create new list of particle n-tuples.
+
+    Args:
+        input_list: The input list of n-tuples.
+        old2new_ids: The dictionary, key is the old id and value is the new id.
+
+    Return:
+        The list of n-tuples with the new ids.
+    """
+    new_list = [map(old2new_ids.get, t) for t in input_list]
+    return [p for p in new_list if None not in p]
