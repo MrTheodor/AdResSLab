@@ -271,6 +271,7 @@ def main():  # NOQA
     if args.cap_force:
         print('Define maximum cap-force in the system (max: {})'.format(args.cap_force))
         cap_force = espressopp.integrator.CapForce(system, args.cap_force)
+        cap_force.adress = True
         integrator.addExtension(cap_force)
 
     print('Decomposing...')
@@ -380,9 +381,15 @@ def main():  # NOQA
             print('Collect trajectory every {} in {}'.format(args.trj_collect, trj_filename))
 
         # Main integrator loop.
+        time_vv = 0.0
         print('Run simulation for {} steps'.format(k_steps*args.int_step))
+
+        print(system.storage.getParticle(188).pos)
+        
         for k in range(k_steps):
+            time_s = time.time()
             integrator.run(args.int_step)
+            time_vv += (time.time() - time_s)
             system_analysis.info()
             if compute_density_profile:
                 xdensity += numpy.array(xdensity_comp.compute(xdensity_bins))
@@ -398,6 +405,7 @@ def main():  # NOQA
 
     print('Finished!')
     print('Total time: {}'.format(time.time() - time0))
+    print('VV time: {}'.format(time_vv))
     espressopp.tools.analyse.final_info(system, integrator, verletlist, time0, time.time())
 
 

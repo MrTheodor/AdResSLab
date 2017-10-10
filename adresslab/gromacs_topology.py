@@ -1054,6 +1054,7 @@ def setCoulombInteractions(system, verletlist, rc, atomtypeparams,
                             for type_2, pj in atomtypeparams.iteritems()
                             if ((pi['particletype'] == 'V' and pj['particletype'] == 'V'))
                             })
+    cg_type_pairs = []
 
     print('Number of AT coulombic pairs: {}'.format(len(at_type_pairs)))
     if at_type_pairs or cg_type_pairs:
