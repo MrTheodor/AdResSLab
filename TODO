@@ -1,2 +1,4 @@
 - unittests!
 - refactoring of GROMACS topology parser
+- documentation
+- more tests

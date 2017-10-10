@@ -130,7 +130,8 @@ def setLennardJonesInteractions(input_conf, verletlist, cutoff, nonbonded_params
             continue
         param = nonbonded_params.get((type_1, type_2))
         if param:
-            print 'Using defined non-bonded cross params', param
+            print('Using defined non-bonded cross params', param, type_1, type_2)
+            print(nonbonded_params)
             sig, eps = param['sig'], param['eps']
         else:
             sig_1, eps_1 = float(pi['sig']), float(pi['eps'])
@@ -168,7 +169,7 @@ def setTabulatedInteractions(atomtypeparams, vl, cutoff, interaction=None, table
     spline_type = 1  # linear interpolation
 
     if interaction is None:
-        interaction = espressopp.interaction.VerletListLennardJones(vl)
+        interaction = espressopp.interaction.VerletListTabulated(vl)
 
     type_pairs = set()
     for type_1, v1 in atomtypeparams.iteritems():
@@ -224,13 +225,19 @@ def genParticleList(input_conf, gro_file, use_charge=False, adress=False, temper
     vx = vy = vz = None
     if temperature:
         props.append('v')
-        vx, vy, vz = espressopp.tools.velocities.gaussian(temperature, len(input_conf.masses), input_conf.masses)
+        if adress:
+            at_masses = [input_conf.masses[i] for i in range(len(input_conf.masses))
+                         if input_conf.atomtypeparams[input_conf.types[i]]['particletype'] == 'A']
+            vx, vy, vz = espressopp.tools.velocities.gaussian(temperature, len(at_masses), at_masses)
+            print(len(vx))
+        else:
+            vx, vy, vz = espressopp.tools.velocities.gaussian(temperature, len(input_conf.masses), input_conf.masses)
     print(len(vx))
     Particle = collections.namedtuple('Particle', props)
     particle_list = []
     num_particles = len(input_conf.types)
     if adress:
-        props.append('adrat')   # Set to 1 if AT particle otherwise 0
+        props.append('vp')   # Set to 1 if CG particle otherwise 0
         Particle = collections.namedtuple('Particle', props)
         adress_tuple = []
         tmptuple = []
@@ -238,26 +245,22 @@ def genParticleList(input_conf, gro_file, use_charge=False, adress=False, temper
         for pid in range(num_particles):
             atom_type = input_conf.types[pid]
             particle_type = input_conf.atomtypeparams[atom_type]['particletype']
-            tmp = [pid+1,
-                   atom_type,
-                   espressopp.Real3D(gro_file.atoms[pid+1].position)]
+            tmp = [pid+1, atom_type, espressopp.Real3D(gro_file.atoms[pid+1].position)]
             if use_mass:
                 tmp.append(input_conf.masses[pid])
             if use_charge:
                 tmp.append(input_conf.charges[pid])
-            if temperature:
-                tmp.append(espressopp.Real3D(
-                    vx[at_id],
-                    vy[at_id],
-                    vz[at_id]
-                ))
             if particle_type == 'V':
-                tmp.append(0)  # adrat
+                if temperature:
+                    tmp.append(espressopp.Real3D(0.0))
+                tmp.append(1)  # vp
                 if tmptuple:
                     adress_tuple.append([pid+1] + tmptuple[:])
                 tmptuple = []
             else:
-                tmp.append(1)  # adrat
+                if temperature:
+                    tmp.append(espressopp.Real3D(vx[at_id], vy[at_id], vz[at_id]))
+                tmp.append(0)  # vp
                 tmptuple.append(pid+1)
                 at_id += 1
             particle_list.append(Particle(*tmp))
@@ -267,19 +270,13 @@ def genParticleList(input_conf, gro_file, use_charge=False, adress=False, temper
         return props, particle_list, adress_tuple
     else:
         for pid in range(num_particles):
-            tmp = [pid+1,
-                   input_conf.types[pid],
-                   espressopp.Real3D(gro_file.atoms[pid+1].position)]
+            tmp = [pid+1, input_conf.types[pid], espressopp.Real3D(gro_file.atoms[pid+1].position)]
             if use_mass:
                 tmp.append(input_conf.masses[pid])
             if use_charge:
                 tmp.append(input_conf.charges[pid])
             if temperature:
-                tmp.append(espressopp.Real3D(
-                    vx[pid],
-                    vy[pid],
-                    vz[pid]
-                ))
+                tmp.append(espressopp.Real3D( vx[pid], vy[pid], vz[pid] ))
             particle_list.append(Particle(*tmp))
         return props, particle_list
 
@@ -372,7 +369,7 @@ def setPairInteractions(system, input_conf, cutoff, coulomb_cutoff, ftpl=None):
                 interaction_dynamic.setPotential(type1=type_1, type2=type_2, potential=potQQ)
             system.addInteraction(interaction_dynamic, 'coulomb14_at_cross')
 
-def setBondedInteractions(system, input_conf, ftpl):
+def setBondedInteractions(system, input_conf, ftpl=None):
     ret_list = {}
     bonds = input_conf.bondtypes
     bondtypeparams = input_conf.bondtypeparams
@@ -392,7 +389,7 @@ def setBondedInteractions(system, input_conf, ftpl):
 
     return ret_list
 
-def setAngleInteractions(system, input_conf, ftpl):
+def setAngleInteractions(system, input_conf, ftpl=None):
     ret_list = {}
     angletypeparams = input_conf.angletypeparams
     angles = input_conf.angletypes
@@ -411,7 +408,7 @@ def setAngleInteractions(system, input_conf, ftpl):
             ret_list.update({(aid, cross_angles): angleinteraction})
     return ret_list
 
-def setDihedralInteractions(system, input_conf, ftpl):
+def setDihedralInteractions(system, input_conf, ftpl=None):
     ret_list = {}
     dihedrals = input_conf.dihedraltypes
     dihedraltypeparams = input_conf.dihedraltypeparams
