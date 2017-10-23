@@ -125,38 +125,44 @@ def main():  # NOQA
         cellGrid = espressopp.tools.decomp.cellGrid(box, nodeGrid, max_cutoff, skin)
     print('Cell grid: {}'.format(cellGrid))
 
-    print('Setting AdResS module')
-    print('Explicit region: {}'.format(args.adress_ex))
-    print('Hybrid region: {}'.format(args.adress_hy))
-    if args.adress_centre == 'box_centre':
-        adr_centre = [box[0]/2.0, box[1]/2.0, box[2]/2.0]
-    else:
-        adr_centre = map(float, args.adress_centre.split(','))
+    system.storage = espressopp.storage.DomainDecomposition(system, nodeGrid, cellGrid)
 
-    adr_centre = espressopp.Real3D(adr_centre)
-
-    if args.adress_use_sphere and args.calculate_tf:
-        # TODO(jakub): Add support for spherical AdResS region in case of TD-force calculation.
-        raise RuntimeError('Sphere AdResS region not supported for TD-force calculation')
-
-    print('Centre coordinates: {}'.format(adr_centre))
-    print('Spherical region: {}'.format(args.adress_use_sphere))
-
-    system.storage = espressopp.storage.DomainDecompositionHybrid(system, nodeGrid, cellGrid, adr_centre, args.adress_ex, args.adress_hy, False)
-
-    # Adds particles here
-    system.storage.addParticles(map(tuple, all_particles), *part_prop)
-
-    system.storage.decompose()
-
-    print('Set {} AdResS tuples'.format(len(adress_tuple)))
-
-    fltl = espressopp.FixedLocalTupleList(system.storage)
-    fltl.addTuples(adress_tuple)
-
-    integrator = espressopp.integrator.VelocityVerletHybrid(system, fltl)
+    integrator = espressopp.integrator.VelocityVerlet(system)
     integrator.dt = args.dt
     system.integrator = integrator
+
+    # Adds particles here
+    # This is a pure atomistic simulator, remove CG particles and renumber AT particles
+    old2new_ids = {}
+    at_id = 1
+    tmpp = []
+    new_plist = []
+    part_prop = list(part_prop)
+    index_adrat = part_prop.index('adrat')
+    del part_prop[index_adrat]
+    index_id = part_prop.index('id')
+    for p in all_particles:
+        if p.adrat == 1:  # atomistic particle
+            old_id = p.id
+            p = list(p)
+            p[index_id] = at_id
+            del p[index_adrat]
+            new_plist.append(p)
+            old2new_ids[old_id] = at_id
+            tmpp.append(tuple(p))
+            at_id += 1
+    print('Number of particles: {}'.format(len(new_plist)))
+    system.storage.addParticles(new_plist, *part_prop)
+    system.storage.decompose()
+
+    for k in input_conf.bondtypes:
+        input_conf.bondtypes[k] = tools.renumber_list(input_conf.bondtypes[k], old2new_ids)
+    for k in input_conf.angletypes:
+        input_conf.angletypes[k] = tools.renumber_list(input_conf.angletypes[k], old2new_ids)
+    for k in input_conf.dihedraltypes:
+        input_conf.dihedraltypes[k] = tools.renumber_list(input_conf.dihedraltypes[k], old2new_ids)
+
+    exclusions = tools.renumber_list(input_conf.exclusions, old2new_ids)
 
     print('Prepared:')
     print('Bonds: {}'.format(sum(len(x) for x in input_conf.bondtypes.values())))
@@ -164,37 +170,28 @@ def main():  # NOQA
     print('Dihedrals: {}'.format(sum(len(x) for x in input_conf.dihedraltypes.values())))
     print('Pairs: {}'.format(sum(len(x) for x in input_conf.pairtypes.values())))
 
-
     # Define interactions.
-    verletlistAT = espressopp.VerletListHybridAT(system, max_cutoff, input_conf.exclusions)
-    verletlistCG = espressopp.VerletListHybridCG(system, max_cutoff, input_conf.exclusions)
+    verletlist = espressopp.VerletList(system, cutoff=max_cutoff, exclusionlist=exclusions)
 
-    at_lj_interaction = espressopp.interaction.VerletListHybridLennardJones(verletlistAT, False)
+    ftpl = None  # AdResS tuple, set to None
+
     lj_interaction = tools.setLennardJonesInteractions(
-        input_conf, verletlistAT, max_cutoff, input_conf.nonbond_params,
-        interaction=at_lj_interaction)
+        input_conf, verletlist, max_cutoff, input_conf.nonbond_params, ftpl=ftpl)
+    coulomb_interaction = gromacs_topology.setCoulombInteractions(system,
+                                                                  verletlist,
+                                                                  max_cutoff,
+                                                                  input_conf.atomtypeparams,
+                                                                  epsilon1=args.coulomb_epsilon1,
+                                                                  epsilon2=args.coulomb_epsilon2,
+                                                                  kappa=args.coulomb_kappa,
+                                                                  ftpl=ftpl)
 
-    # at_el_interaction = espressopp.interaction.VerletListHybridReactionFieldGeneralized(
-    #     verletlistAT, False)
-    #
-    # coulomb_interaction = gromacs_topology.setCoulombInteractions(system,
-    #                                                               verletlistAT,
-    #                                                               max_cutoff,
-    #                                                               input_conf.atomtypeparams,
-    #                                                               epsilon1=args.coulomb_epsilon1,
-    #                                                               epsilon2=args.coulomb_epsilon2,
-    #                                                               kappa=args.coulomb_kappa,
-    #                                                               interaction=at_el_interaction)
-    cg_tab_interaction = espressopp.interaction.VerletListHybridTabulated(verletlistCG, True)
-    tools.setTabulatedInteractions(input_conf.atomtypeparams, verletlistCG, max_cutoff,
-                                   interaction=cg_tab_interaction)
-    tools.setBondedInteractions(system, input_conf)
-    tools.setAngleInteractions(system, input_conf)
-    tools.setDihedralInteractions(system, input_conf)
+    tools.setBondedInteractions(system, input_conf, ftpl)
+    tools.setAngleInteractions(system, input_conf, ftpl)
+    tools.setDihedralInteractions(system, input_conf, ftpl)
 
     system.addInteraction(lj_interaction, 'lj')
-    system.addInteraction(cg_tab_interaction,  'lj-tab')
-    # system.addInteraction(coulomb_interaction, 'coulomb')
+    system.addInteraction(coulomb_interaction, 'coulomb')
 
     print('Number of interactions: {}'.format(system.getNumberOfInteractions()))
 
@@ -211,7 +208,7 @@ def main():  # NOQA
         # thermostat.temperature = temperature
         # thermostat.coupling = args.thermostat_gamma
 
-    print("Added tuples, decomposing now ...")
+    print("Added tuples, decomposing now...")
 
     ext_analysis, system_analysis = tools.setSystemAnalysis(
         system, integrator, args, args.energy_collect,
@@ -225,9 +222,6 @@ def main():  # NOQA
 
     print('Number of particles: {}'.format(len(all_particles)))
 
-    # add AdResS
-    adress = espressopp.integrator.FAdress(system, fltl, adr_centre, args.adress_ex, args.adress_hy)
-    integrator.addExtension(adress)
     integrator.addExtension(thermostat)
 
     if args.cap_force:
@@ -236,12 +230,13 @@ def main():  # NOQA
         integrator.addExtension(cap_force)
 
     print('Decomposing...')
-    espressopp.tools.AdressDecomp(system, integrator)
+    system.storage.decompose()
 
     # Let's compute density along X-axis
     xdensity_dr = 0.05
     xdensity_bins = int(box[0]/xdensity_dr)
-    compute_density_profile = args.compute_density_profile or args.calculate_tf
+    compute_density_profile = args.compute_density_profile
+
     # Only atomistic particles
     at_masses = [m for i, m in enumerate(input_conf.masses)
                  if input_conf.atomtypeparams[input_conf.types[i]]['particletype'] == 'A']
@@ -251,7 +246,6 @@ def main():  # NOQA
         xdensity_comp = espressopp.analysis.XDensity(system)
         xdensity = numpy.array(xdensity_comp.compute(xdensity_bins))
 
-    # Do not store trajectory when requested calculate TF.
     trj_filename = '{}_{}_traj_at'.format(args.output_prefix, rng_seed)
     dump_conf = None
     if args.output_format == 'gro':
@@ -259,10 +253,11 @@ def main():  # NOQA
         dump_conf = espressopp.io.DumpGRO(
             system,
             integrator,
+            append=True,
             filename='{}.gro'.format(trj_filename),
             unfolded=True)
     elif args.output_format == 'xtc':
-        trj_filename = '{}.xtc'.format(trj_filename)
+        trj_filename = '{}.gro'.format(trj_filename)
         dump_conf = espressopp.io.DumpXTC(
             system,
             integrator,
@@ -273,19 +268,19 @@ def main():  # NOQA
         raise RuntimeError('Traj dump {} not supported'.format(args.output_format))
 
     if dump_conf and args.trj_collect > 0:
+        dump_conf.dump()
         ext_dump = espressopp.integrator.ExtAnalyze(dump_conf, args.trj_collect)
         integrator.addExtension(ext_dump)
         print('Collect trajectory every {} in {}'.format(args.trj_collect, trj_filename))
 
     # Main integrator loop.
-    time_int_loop = 0.0
+    time_vv = 0.0
     print('Run simulation for {} steps'.format(k_steps*args.int_step))
-    system_analysis.dump()
-    system_analysis.info()
+
     for k in range(k_steps):
-        time1 = time.time()
+        time_s = time.time()
         integrator.run(args.int_step)
-        time_int_loop += (time.time() - time1)
+        time_vv += (time.time() - time_s)
         system_analysis.info()
         if compute_density_profile:
             xdensity += numpy.array(xdensity_comp.compute(xdensity_bins))
@@ -294,13 +289,13 @@ def main():  # NOQA
     if compute_density_profile:
         xdensity = xdensity / (k_steps+1)
         xdensity = numpy.column_stack((numpy.arange(0, box[0], xdensity_dr), xdensity*average_density))
-
         xdensity_file = '{}_{}_xdensity.csv'.format(args.output_prefix, rng_seed)
         numpy.savetxt(xdensity_file, xdensity)
         print('Saved x-density: {}'.format(xdensity_file))
 
     print('Finished!')
-    print('Integrator loop: {}'.format(time_int_loop))
+    print('Total time: {}'.format(time.time() - time0))
+    print('VV time: {}'.format(time_vv))
     vv_timers = integrator.getTimers()
     global_timers = {}
     for cpu_timer in vv_timers:
