@@ -26,6 +26,7 @@ import random
 import os
 import time
 from scipy.signal import savgol_filter
+import logging
 
 from adresslab import files_io, tools_adress
 from adresslab import tools_sim as tools
@@ -47,6 +48,11 @@ def main():  # NOQA
     max_cutoff = args.cutoff
 
     print('Welcome in AdResSLab!')
+
+    if args.debug:
+        for s in args.debug.split(','):
+            log_name, log_level = s.split(':')
+            logging.getLogger(log_name).setLevel(log_level)
 
     generate_exclusions = args.exclusion_list is None or not os.path.exists(args.exclusion_list)
 
@@ -125,7 +131,18 @@ def main():  # NOQA
         cellGrid = espressopp.tools.decomp.cellGrid(box, nodeGrid, max_cutoff, skin)
     print('Cell grid: {}'.format(cellGrid))
 
-    system.storage = espressopp.storage.DomainDecompositionHybrid(system, nodeGrid, cellGrid)
+    print('Setting AdResS module')
+    print('Excplicit: {}'.format(args.adress_ex))
+    print('Hybrid: {}'.format(args.adress_hy))
+    if args.adress_centre == 'box_centre':
+        adr_centre = [box[0] / 2.0, box[1] / 2.0, box[2] / 2.0]
+    else:
+        adr_centre = map(float, args.adress_centre.split(','))
+
+    adr_centre = espressopp.Real3D(adr_centre)
+
+    system.storage = espressopp.storage.DomainDecompositionHybrid(
+        system, nodeGrid, cellGrid, adr_centre, args.adress_ex, args.adress_hy, False)
 
     # Adds particles here
     system.storage.addParticles(map(tuple, all_particles), *part_prop)
@@ -147,16 +164,6 @@ def main():  # NOQA
     print('Dihedrals: {}'.format(sum(len(x) for x in input_conf.dihedraltypes.values())))
     print('Pairs: {}'.format(sum(len(x) for x in input_conf.pairtypes.values())))
 
-    print('Setting AdResS module')
-    print('Excplicit: {}'.format(args.adress_ex))
-    print('Hybrid: {}'.format(args.adress_hy))
-    if args.adress_centre == 'box_centre':
-        adr_centre = [box[0]/2.0, box[1]/2.0, box[2]/2.0]
-    else:
-        adr_centre = map(float, args.adress_centre.split(','))
-
-    adr_centre = espressopp.Real3D(adr_centre)
-
     if args.adress_use_sphere and args.calculate_tf:
         # TODO(jakub): Add support for spherical AdResS region in case of TD-force calculation.
         raise RuntimeError('Sphere AdResS region not supported for TD-force calculation')
@@ -165,8 +172,8 @@ def main():  # NOQA
     print('Spherical region: {}'.format(args.adress_use_sphere))
 
     # Define interactions.
-    verletlistAT = espressopp.VerletListHybridAT(system, max_cutoff, input_conf.exclusions)
-    verletlistCG = espressopp.VerletListHybridCG(system, max_cutoff, input_conf.exclusions)
+    verletlistAT = espressopp.VerletListHybridAT(system, max_cutoff, input_conf.exclusions, storage=system.storage)
+    verletlistCG = espressopp.VerletListHybridCG(system, max_cutoff, input_conf.exclusions, storage=system.storage)
 
     at_lj_interaction = espressopp.interaction.VerletListHybridLennardJones(verletlistAT, False)
     lj_interaction = tools.setLennardJonesInteractions(
