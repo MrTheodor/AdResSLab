@@ -26,6 +26,7 @@ import random
 import os
 import time
 from scipy.signal import savgol_filter
+import logging
 
 from adresslab import files_io, tools_adress
 from adresslab import tools_sim as tools
@@ -47,6 +48,11 @@ def main():  # NOQA
     max_cutoff = args.cutoff
 
     print('Welcome in AdResSLab!')
+
+    if args.debug:
+        for s in args.debug.split(','):
+            log_name, log_level = s.split(':')
+            logging.getLogger(log_name).setLevel(log_level)
 
     generate_exclusions = args.exclusion_list is None or not os.path.exists(args.exclusion_list)
 
@@ -142,7 +148,8 @@ def main():  # NOQA
     print('Centre coordinates: {}'.format(adr_centre))
     print('Spherical region: {}'.format(args.adress_use_sphere))
 
-    system.storage = espressopp.storage.DomainDecompositionHybrid(system, nodeGrid, cellGrid, adr_centre, args.adress_ex, args.adress_hy, False)
+    system.storage = espressopp.storage.DomainDecompositionHybrid(
+        system, nodeGrid, cellGrid, adr_centre, args.adress_ex, args.adress_hy, False)
 
     # Adds particles here
     system.storage.addParticles(map(tuple, all_particles), *part_prop)
@@ -166,8 +173,8 @@ def main():  # NOQA
 
 
     # Define interactions.
-    verletlistAT = espressopp.VerletListHybridAT(system, max_cutoff, input_conf.exclusions)
-    verletlistCG = espressopp.VerletListHybridCG(system, max_cutoff, input_conf.exclusions)
+    verletlistAT = espressopp.VerletListHybridAT(system, max_cutoff, input_conf.exclusions, storage=system.storage)
+    verletlistCG = espressopp.VerletListHybridCG(system, max_cutoff, input_conf.exclusions, storage=system.storage)
 
     at_lj_interaction = espressopp.interaction.VerletListHybridLennardJones(verletlistAT, False)
     lj_interaction = tools.setLennardJonesInteractions(
