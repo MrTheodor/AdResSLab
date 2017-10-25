@@ -138,20 +138,20 @@ def main():  # NOQA
     tmpp = []
     new_plist = []
     part_prop = list(part_prop)
-    index_adrat = part_prop.index('adrat')
-    del part_prop[index_adrat]
+    index_vp = part_prop.index('vp')
+    del part_prop[index_vp]
     index_id = part_prop.index('id')
     for p in all_particles:
-        if p.adrat == 1:  # atomistic particle
+        if p.vp == 0:  # atomistic particle
             old_id = p.id
             p = list(p)
             p[index_id] = at_id
-            del p[index_adrat]
+            del p[index_vp]
             new_plist.append(p)
             old2new_ids[old_id] = at_id
             tmpp.append(tuple(p))
             at_id += 1
-    print('Number of particles: {}'.format(len(new_plist)))
+    print('Number of particles: {} from {}'.format(len(new_plist), len(all_particles)))
     system.storage.addParticles(new_plist, *part_prop)
     system.storage.decompose()
 
@@ -184,7 +184,7 @@ def main():  # NOQA
                                                                   epsilon1=args.coulomb_epsilon1,
                                                                   epsilon2=args.coulomb_epsilon2,
                                                                   kappa=args.coulomb_kappa,
-                                                                  ftpl=ftpl)
+                                                                  ftpl=ftpl, not_cg=True)
 
     tools.setBondedInteractions(system, input_conf, ftpl)
     tools.setAngleInteractions(system, input_conf, ftpl)
@@ -219,8 +219,6 @@ def main():  # NOQA
         total_velocity = espressopp.analysis.CMVelocity(system)
         ext_remove_com = espressopp.integrator.ExtAnalyze(total_velocity, args.remove_com)
         integrator.addExtension(ext_remove_com)
-
-    print('Number of particles: {}'.format(len(all_particles)))
 
     integrator.addExtension(thermostat)
 
@@ -277,6 +275,8 @@ def main():  # NOQA
     time_vv = 0.0
     print('Run simulation for {} steps'.format(k_steps*args.int_step))
 
+    system_analysis.dump()
+    system_analysis.info()
     for k in range(k_steps):
         time_s = time.time()
         integrator.run(args.int_step)

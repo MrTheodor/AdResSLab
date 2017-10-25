@@ -1038,7 +1038,7 @@ def setLennardJonesInteractions(system, defaults, atomtypeparams, verletlist, cu
 
 
 def setCoulombInteractions(system, verletlist, rc, atomtypeparams,
-                           epsilon1, epsilon2, kappa, ftpl=None, interaction=None):
+                           epsilon1, epsilon2, kappa, ftpl=None, interaction=None, not_cg=False):
     pref = 138.935485  # we want gromacs units, so this is 1/(4 pi eps_0) ins units of kJ mol^-1 e^-2
 
     at_type_pairs = sorted({
@@ -1054,6 +1054,8 @@ def setCoulombInteractions(system, verletlist, rc, atomtypeparams,
                             for type_2, pj in atomtypeparams.iteritems()
                             if ((pi['particletype'] == 'V' and pj['particletype'] == 'V'))
                             })
+    if not_cg:
+        cg_type_pairs = {}
 
     print('Number of AT coulombic pairs: {}'.format(len(at_type_pairs)))
     if at_type_pairs or cg_type_pairs:
