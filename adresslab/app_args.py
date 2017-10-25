@@ -44,6 +44,7 @@ def _args_adress():
                         default='sim', type=str,
                         help='Prefix for output files')
     parser.add_argument('--energy_collect', default=1000, help='How often collect energy terms', type=int)
+    parser.add_argument('--debug', default=None)
 
     trajectory_group = parser.add_argument_group('Trajectory')
     trajectory_group.add_argument('--trj_collect', default=1000, help='How often to store trajectory', type=int)

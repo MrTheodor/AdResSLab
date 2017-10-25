@@ -20,6 +20,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import espressopp  # NOQA
+import logging
 import numpy
 from mpi4py import MPI
 import random
@@ -47,6 +48,11 @@ def main():  # NOQA
     max_cutoff = args.cutoff
 
     print('Welcome in AdResSLab!')
+
+    if args.debug:
+        for s in args.debug.split(','):
+            log_name, log_level = s.split(':')
+            logging.getLogger(log_name).setLevel(log_level)
 
     generate_exclusions = args.exclusion_list is None or not os.path.exists(args.exclusion_list)
 
@@ -287,6 +293,7 @@ def main():  # NOQA
     average_density = sum(at_masses)/(box[0]*box[1]*box[2])
     print('Average density: {}'.format(average_density))
     if compute_density_profile:
+        print('Compute x-density profile')
         xdensity_comp = espressopp.analysis.XDensity(system)
         xdensity = numpy.array(xdensity_comp.compute(xdensity_bins))
 
@@ -384,8 +391,9 @@ def main():  # NOQA
         time_vv = 0.0
         print('Run simulation for {} steps'.format(k_steps*args.int_step))
 
-        print(system.storage.getParticle(188).pos)
-        
+        system_analysis.dump()
+        system_analysis.info()
+
         for k in range(k_steps):
             time_s = time.time()
             integrator.run(args.int_step)
@@ -397,7 +405,9 @@ def main():  # NOQA
         # Calculate average of the density profile.
         if compute_density_profile:
             xdensity = xdensity / (k_steps+1)
-            xdensity = numpy.column_stack((numpy.arange(0, box[0], xdensity_dr), xdensity*average_density))
+            xdensity = numpy.column_stack((
+                numpy.arange(0, box[0], xdensity_dr),
+                xdensity*average_density))
 
             xdensity_file = '{}_{}_xdensity.csv'.format(args.output_prefix, rng_seed)
             numpy.savetxt(xdensity_file, xdensity)
