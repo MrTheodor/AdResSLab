@@ -33,7 +33,7 @@ from adresslab import tools_sim as tools
 from adresslab import gromacs_topology
 
 
-from adresslab.app_args import _args_md as _args
+from adresslab.app_args import _args_adress as _args
 
 # GROMACS units, kJ/mol K
 kb = 0.0083144621
